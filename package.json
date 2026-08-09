@@ -1,42 +1,57 @@
 {
   "name": "RoaMate",
-  "version": "0.0.1",
+  "version": "1.5.1",
   "private": true,
+  "_NOTE": "react/react-native/@react-native/* versions below are confirmed via `npm view react-native@0.86.2 peerDependencies` against Ivy's actual project - not guessed. If your RN version differs, re-run that command against your version before trusting these numbers.",
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "jest",
+    "pod-install": "cd ios && pod install"
+  },
+  "jest": {
+    "preset": "react-native",
+    "transformIgnorePatterns": [
+      "node_modules/(?!(react-native|@react-native|@react-navigation|@nozbe/watermelondb)/)"
+    ]
   },
   "dependencies": {
     "react": "19.2.3",
     "react-native": "0.86.2",
-    "@react-native/new-app-screen": "0.86.2",
-    "react-native-safe-area-context": "^5.5.2"
+    "@react-navigation/native": "latest",
+    "@react-navigation/native-stack": "latest",
+    "react-native-screens": "latest",
+    "react-native-safe-area-context": "latest",
+    "@nozbe/watermelondb": "latest",
+    "react-native-maps": "latest",
+    "react-native-keychain": "latest",
+    "@react-native-community/geolocation": "latest",
+    "react-native-background-fetch": "latest",
+    "react-native-mmkv": "latest",
+    "date-fns": "^3.6.0",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "@babel/core": "^7.25.2",
-    "@babel/preset-env": "^7.25.3",
-    "@babel/runtime": "^7.25.0",
-    "@react-native-community/cli": "20.1.0",
-    "@react-native-community/cli-platform-android": "20.1.0",
-    "@react-native-community/cli-platform-ios": "20.1.0",
+    "@babel/preset-env": "^7.25.4",
+    "@babel/plugin-proposal-decorators": "^7.25.0",
+    "@babel/runtime": "^7.25.4",
     "@react-native/babel-preset": "0.86.2",
     "@react-native/eslint-config": "0.86.2",
-    "@react-native/jest-preset": "0.86.2",
     "@react-native/metro-config": "0.86.2",
     "@react-native/typescript-config": "0.86.2",
-    "@types/jest": "^29.5.13",
     "@types/react": "^19.2.0",
-    "@types/react-test-renderer": "^19.1.0",
-    "eslint": "^8.19.0",
-    "jest": "^29.6.3",
-    "prettier": "2.8.8",
-    "react-test-renderer": "19.2.3",
-    "typescript": "^5.8.3"
+    "@types/jest": "^29.5.13",
+    "typescript": "^5.4.5",
+    "jest": "^29.7.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "babel-plugin-module-resolver": "^5.0.2"
   },
   "engines": {
-    "node": ">= 22.11.0"
+    "node": ">=18"
   }
 }

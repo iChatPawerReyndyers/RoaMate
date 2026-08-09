@@ -23,6 +23,15 @@ target 'RoaMate' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  # NitroModules is a transitive dependency of react-native-mmkv and must be
+  # included directly for CocoaPods to resolve it.
+  pod 'NitroModules', path: '../node_modules/react-native-nitro-modules'
+
+  # WatermelonDB dependency - required per their install docs, not picked up
+  # by autolinking. Without this, `pod install` fails with:
+  # "[!] Unable to find a specification for `simdjson` depended upon by `WatermelonDB`"
+  pod 'simdjson', path: '../node_modules/@nozbe/simdjson', modular_headers: true
+
   post_install do |installer|
     react_native_post_install(
       installer,

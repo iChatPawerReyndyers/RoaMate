@@ -1,10 +1,9 @@
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
 /**
- * Metro configuration
+ * WatermelonDB requires .js resolution priority handled correctly with
+ * Metro's default config; no custom resolver overrides needed beyond this.
  * https://reactnative.dev/docs/metro
- *
- * @type {import('@react-native/metro-config').MetroConfig}
  */
 const config = {};
 
