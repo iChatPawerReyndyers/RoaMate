@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
 
@@ -31,6 +32,7 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<string>('');
+  const navigation = useNavigation();
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -95,6 +97,10 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
                 ))
               )}
             </View>
+            <TouchableOpacity style={styles.kittyButton} onPress={() => navigation.navigate('KittyDeposit' as never)}>
+              <Text style={styles.kittyButtonTitle}>Trip kitty</Text>
+              <Text style={styles.kittyButtonSubtitle}>View contributions & log a deposit</Text>
+            </TouchableOpacity>
             <View style={styles.actions}>
               <TouchableOpacity style={styles.exportButton} onPress={() => handleExport('csv')}>
                 <Text style={styles.exportButtonText}>Export CSV</Text>
@@ -118,6 +124,9 @@ const styles = StyleSheet.create({
   message: { color: '#555', marginVertical: 8 },
   error: { color: '#b00020', marginVertical: 8 },
   card: { backgroundColor: '#f5f8ff', borderRadius: 16, padding: 16, marginBottom: 16 },
+  kittyButton: { backgroundColor: '#eef2ff', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#d7e3ff' },
+  kittyButtonTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  kittyButtonSubtitle: { fontSize: 12, color: '#555' },
   cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
   balanceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   balanceUser: { fontSize: 14, color: '#333' },

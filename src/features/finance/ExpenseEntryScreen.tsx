@@ -11,6 +11,7 @@ interface Member {
 interface Props {
   tripMembers: Member[];
   initialDescription?: string;
+  initialPaymentSource?: { source: 'KITTY' } | { source: 'MEMBER_ABONO'; payerUserId: string };
   onSubmit: (payload: {
     description: string;
     totalAmountCents: number;
@@ -25,11 +26,13 @@ interface Props {
  * which can be left blank to auto-fill the remainder), and a checklist of
  * participants sharing the cost.
  */
-export default function ExpenseEntryScreen({ tripMembers, initialDescription, onSubmit }: Props) {
+export default function ExpenseEntryScreen({ tripMembers, initialDescription, initialPaymentSource, onSubmit }: Props) {
   const [description, setDescription] = useState(initialDescription ?? '');
   const [totalDollars, setTotalDollars] = useState('');
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([
-    { source: 'KITTY', amountCents: null },
+    initialPaymentSource?.source === 'MEMBER_ABONO'
+      ? { source: 'MEMBER_ABONO', payerUserId: initialPaymentSource.payerUserId, amountCents: null }
+      : { source: 'KITTY', amountCents: null },
   ]);
   const [participantIds, setParticipantIds] = useState<Set<string>>(
     new Set(tripMembers.map(m => m.userId)),

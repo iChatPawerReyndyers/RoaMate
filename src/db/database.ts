@@ -1,6 +1,7 @@
 import { Database } from '@nozbe/watermelondb';
 import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
 import schema from './schema';
+import migrations from './migrations';
 import { getOrCreateEncryptionKey } from '@/services/security/KeyManager';
 
 import Trip from './models/Trip';
@@ -13,6 +14,7 @@ import Destination from './models/Destination';
 import LocationNote from './models/LocationNote';
 import ActivitySession from './models/ActivitySession';
 import ChecklistItem from './models/ChecklistItem';
+import ChecklistTemplate from './models/ChecklistTemplate';
 import BeaconAlert from './models/BeaconAlert';
 
 /**
@@ -26,6 +28,7 @@ export async function createDatabase(): Promise<Database> {
 
   const adapter = new SQLiteAdapter({
     schema,
+    migrations,
     dbName: 'roamate.db',
     jsi: true,
     onSetUpError: error => {
@@ -51,6 +54,7 @@ export async function createDatabase(): Promise<Database> {
       LocationNote,
       ActivitySession,
       ChecklistItem,
+      ChecklistTemplate,
       BeaconAlert,
     ],
   });

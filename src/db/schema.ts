@@ -7,7 +7,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
  * than requiring translation logic.
  */
 export default appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'trips',
@@ -85,6 +85,10 @@ export default appSchema({
         { name: 'assigned_day', type: 'string', isOptional: true },
         { name: 'sort_order', type: 'number' },
         { name: 'notes', type: 'string', isOptional: true },
+        { name: 'address', type: 'string', isOptional: true },
+        { name: 'operating_hours', type: 'string', isOptional: true },
+        { name: 'target_budget_cents', type: 'number', isOptional: true },
+        { name: 'attachment_urls', type: 'string', isOptional: true },
         { name: 'synced', type: 'boolean' },
       ],
     }),
@@ -136,6 +140,15 @@ export default appSchema({
         { name: 'raised_at', type: 'number' },
         { name: 'acknowledged', type: 'boolean' },
         { name: 'synced', type: 'boolean' },
+      ],
+    }),
+    tableSchema({
+      name: 'checklist_templates',
+      columns: [
+        { name: 'name', type: 'string' },
+        { name: 'category', type: 'string' }, // PACKING | GROCERY
+        { name: 'items_json', type: 'string' }, // JSON string array of item labels
+        { name: 'created_at', type: 'number' },
       ],
     }),
     tableSchema({

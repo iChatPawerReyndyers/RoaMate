@@ -6,9 +6,11 @@ import { PedometerService } from './PedometerService';
 
 interface Props {
   tripId: string;
+  destinationId?: string;
+  destinationName?: string;
 }
 
-export default function ActivityDashboardScreen({ tripId }: Props) {
+export default function ActivityDashboardScreen({ tripId, destinationId, destinationName }: Props) {
   const [userId, setUserId] = useState<string>('');
   const [stepCountText, setStepCountText] = useState('100');
   const [status, setStatus] = useState<string>('');
@@ -22,7 +24,7 @@ export default function ActivityDashboardScreen({ tripId }: Props) {
 
   useEffect(() => {
     if (!userId) return;
-    const service = new PedometerService(tripId, userId);
+    const service = new PedometerService(tripId, userId, destinationId);
     pedometerRef.current = service;
     service.start();
     setStatus('Step batching is active while this screen remains open.');
@@ -31,7 +33,7 @@ export default function ActivityDashboardScreen({ tripId }: Props) {
       service.stop();
       elevationRef.current?.stop();
     };
-  }, [tripId, userId]);
+  }, [tripId, userId, destinationId]);
 
   const recordSteps = () => {
     const parsed = parseInt(stepCountText, 10);
@@ -54,7 +56,7 @@ export default function ActivityDashboardScreen({ tripId }: Props) {
       return;
     }
 
-    const tracker = new ElevationTracker(tripId, userId);
+    const tracker = new ElevationTracker(tripId, userId, destinationId);
     tracker.start();
     elevationRef.current = tracker;
     setTracking(true);
@@ -89,6 +91,9 @@ export default function ActivityDashboardScreen({ tripId }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Activity Dashboard</Text>
+        {destinationName ? (
+          <Text style={styles.attachedTo}>Logging against: {destinationName}</Text>
+        ) : null}
         <Text style={styles.description}>
           Log steps manually or use the elevation tracker for mountain/hike activity. Step batches upload periodically while the screen is open.
         </Text>
@@ -146,6 +151,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 16 },
   header: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  attachedTo: { fontSize: 13, color: '#2f6fed', fontWeight: '600', marginBottom: 8 },
   description: { color: '#555', marginBottom: 16, lineHeight: 20 },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },

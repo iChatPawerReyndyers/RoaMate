@@ -59,8 +59,8 @@ export default function TripHomeScreen() {
             <Text style={styles.cardSubtitle}>Resolve flagged expense matches</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('Checklist' as never)}>
-            <Text style={styles.cardTitle}>Packing List</Text>
-            <Text style={styles.cardSubtitle}>View and check off items</Text>
+            <Text style={styles.cardTitle}>Checklists</Text>
+            <Text style={styles.cardSubtitle}>Packing & grocery lists, with templates</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('Itinerary' as never)}>
             <Text style={styles.cardTitle}>Itinerary</Text>

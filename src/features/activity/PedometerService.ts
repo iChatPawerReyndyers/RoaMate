@@ -27,7 +27,7 @@ export class PedometerService {
   private lastFlush = Date.now();
   private flushTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private tripId: string, private userId: string) {}
+  constructor(private tripId: string, private userId: string, private destinationId?: string) {}
 
   start(): void {
     this.lastFlush = Date.now();
@@ -56,6 +56,7 @@ export class PedometerService {
       type: 'WALKING',
       stepCount: steps,
       distanceMeters: steps * 0.762, // avg stride length approximation
+      destinationId: this.destinationId,
       startedAt: new Date(this.lastFlush).toISOString(),
       lastBatchAt: now.toISOString(),
     });

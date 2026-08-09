@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function GeoScreen({ tripId }: Props) {
-  const [sharingEnabled, setSharingEnabled] = useState(true);
+  const [sharingEnabled, setSharingEnabled] = useState(false);
   const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {

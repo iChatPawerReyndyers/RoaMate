@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { Database } from '@nozbe/watermelondb';
 import { DatabaseProvider } from '@nozbe/watermelondb/react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RootNavigator from './navigation/RootNavigator';
 import { createDatabase } from '@/db/database';
 import { TripProvider } from '@/app/TripContext';
@@ -55,14 +56,16 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <TripProvider>
-        <DatabaseProvider database={database}>
-          <SyncProvider manager={syncManager}>
-            <RootNavigator />
-          </SyncProvider>
-        </DatabaseProvider>
-      </TripProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <TripProvider>
+          <DatabaseProvider database={database}>
+            <SyncProvider manager={syncManager}>
+              <RootNavigator />
+            </SyncProvider>
+          </DatabaseProvider>
+        </TripProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

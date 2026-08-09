@@ -12,5 +12,9 @@ export default class Destination extends Model {
   @text('assigned_day') assignedDay?: string;
   @field('sort_order') sortOrder!: number;
   @text('notes') notes?: string;
+  @text('address') address?: string;
+  @text('operating_hours') operatingHours?: string;
+  @field('target_budget_cents') targetBudgetCents?: number;
+  @text('attachment_urls') attachmentUrls?: string;
   @field('synced') synced!: boolean;
 }

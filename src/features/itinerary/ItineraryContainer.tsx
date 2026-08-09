@@ -3,6 +3,7 @@ import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from 'react-native'
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
+import { useSync } from '@/sync/SyncContext';
 import ItineraryScreen, { Destination } from './ItineraryScreen';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 
@@ -15,6 +16,7 @@ export default function ItineraryContainer({ tripId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Itinerary'>>();
+  const syncManager = useSync();
 
   const loadDestinations = useCallback(async () => {
     setLoading(true);
@@ -45,7 +47,13 @@ export default function ItineraryContainer({ tripId }: Props) {
     try {
       await apiClient.post('/api/v1/itinerary/destinations/reorder', orderedIds);
     } catch (err) {
-      console.warn('Failed to persist itinerary reorder', err);
+      console.warn('Failed to persist itinerary reorder, queued for sync', err);
+      await syncManager.enqueueEvent({
+        tripId,
+        eventType: 'DESTINATION_REORDERED',
+        clientTimestamp: Date.now(),
+        payloadJson: JSON.stringify({ reorder: orderedIds }),
+      });
     }
   };
 
@@ -71,6 +79,15 @@ export default function ItineraryContainer({ tripId }: Props) {
       onReorder={handleReorder}
       onOpenNotes={(destinationId, destinationName) => {
         navigation.navigate('DestinationNotes', { destinationId, destinationName });
+      }}
+      onStartActivity={(destinationId, destinationName) => {
+        navigation.navigate('Activity', { destinationId, destinationName });
+      }}
+      onAddDestination={() => {
+        navigation.navigate('DestinationForm', { tripId });
+      }}
+      onEditDestination={destinationId => {
+        navigation.navigate('DestinationForm', { tripId, destinationId });
       }}
     />
   );
