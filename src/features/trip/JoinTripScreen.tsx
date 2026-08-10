@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
+import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 
 interface TripJoinedPayload {
   id: string;
@@ -8,13 +10,18 @@ interface TripJoinedPayload {
   name?: string;
 }
 
-interface Props {
+type Props = NativeStackScreenProps<AuthStackParamList, 'JoinTrip'> & {
   onJoined: (trip: TripJoinedPayload) => void;
-}
+};
 
-/** TRIP-01: join via 6-character invite code (QR scan populates the same field). */
-export default function JoinTripScreen({ onJoined }: Props) {
-  const [code, setCode] = useState('');
+/**
+ * TRIP-01: join via 6-character invite code, either typed in directly or
+ * prefilled from ScanQRScreen's route param. A scanned code still lands
+ * here rather than auto-submitting, so the person can double check (or
+ * correct, if the QR was for the wrong trip) before actually joining.
+ */
+export default function JoinTripScreen({ route, onJoined }: Props) {
+  const [code, setCode] = useState(route.params?.inviteCode ?? '');
   const [displayName, setDisplayName] = useState('');
 
   const handleJoin = async () => {

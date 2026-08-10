@@ -2171,6 +2171,12 @@ PODS:
     - Yoga
   - simdjson (3.9.4)
   - TSBackgroundFetch (4.1.1)
+  - VisionCamera (4.7.2):
+    - VisionCamera/Core (= 4.7.2)
+    - VisionCamera/React (= 4.7.2)
+  - VisionCamera/Core (4.7.2)
+  - VisionCamera/React (4.7.2):
+    - React-Core
   - WatermelonDB (0.28.0):
     - React
     - simdjson
@@ -2263,6 +2269,7 @@ DEPENDENCIES:
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - "simdjson (from `../node_modules/@nozbe/simdjson`)"
+  - VisionCamera (from `../node_modules/react-native-vision-camera`)
   - "WatermelonDB (from `../node_modules/@nozbe/watermelondb`)"
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2443,6 +2450,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-svg"
   simdjson:
     :path: "../node_modules/@nozbe/simdjson"
+  VisionCamera:
+    :path: "../node_modules/react-native-vision-camera"
   WatermelonDB:
     :path: "../node_modules/@nozbe/watermelondb"
   Yoga:
@@ -2536,6 +2545,7 @@ SPEC CHECKSUMS:
   RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
   simdjson: 7bb9e33d87737cec966e7b427773c67baa4458fe
   TSBackgroundFetch: 18918b6449a1e3f01eb0f5b44d6d79ce6160a5a5
+  VisionCamera: 30b358b807324c692064f78385e9a732ce1bebfe
   WatermelonDB: 75e467adbaf2cb2809780fb3eda7ce4964e11778
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b
 

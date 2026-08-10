@@ -32,6 +32,7 @@
     "react-native-mmkv": "latest",
     "react-native-svg": "latest",
     "react-native-qrcode-svg": "latest",
+    "react-native-vision-camera": "4.7.2",
     "react-native-gesture-handler": "latest",
     "date-fns": "^3.6.0",
     "zustand": "^4.5.5"

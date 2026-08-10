@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
 import InviteQRCode from './InviteQRCode';
+import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 
 interface TripCreatedPayload {
   id: string;
@@ -9,12 +11,12 @@ interface TripCreatedPayload {
   name?: string;
 }
 
-interface Props {
+type Props = NativeStackScreenProps<AuthStackParamList, 'CreateTrip'> & {
   onCreated: (trip: TripCreatedPayload) => void;
-}
+};
 
 /** TRIP-01: create a trip; server returns a 6-character invite code + a scannable QR payload. */
-export default function CreateTripScreen({ onCreated }: Props) {
+export default function CreateTripScreen({ navigation, onCreated }: Props) {
   const [name, setName] = useState('');
   const [createdTrip, setCreatedTrip] = useState<TripCreatedPayload | null>(null);
 
@@ -44,6 +46,21 @@ export default function CreateTripScreen({ onCreated }: Props) {
       <TouchableOpacity style={styles.button} onPress={handleCreate}>
         <Text style={styles.buttonText}>Create Trip</Text>
       </TouchableOpacity>
+
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>or join a trip</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      <View style={styles.joinRow}>
+        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('ScanQR')}>
+          <Text style={styles.joinButtonText}>Scan QR</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('JoinTrip', undefined)}>
+          <Text style={styles.joinButtonText}>Enter Code</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -56,4 +73,10 @@ const styles = StyleSheet.create({
   code: { fontSize: 20, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: 20 },
   button: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center' },
   buttonText: { color: '#fff', fontWeight: '700' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 16 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: '#ddd' },
+  dividerText: { marginHorizontal: 10, fontSize: 12, color: '#888' },
+  joinRow: { flexDirection: 'row', gap: 10 },
+  joinButton: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 14, alignItems: 'center' },
+  joinButtonText: { fontWeight: '600', color: '#2f6fed' },
 });

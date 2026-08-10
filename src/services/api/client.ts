@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { getAuthToken, setAuthToken } from '@/services/security/KeyManager';
+import { getAuthToken, setAuthToken, clearAuthToken } from '@/services/security/KeyManager';
 
 /**
  * Android emulators run in their own virtual network - `localhost` from
@@ -12,6 +12,23 @@ import { getAuthToken, setAuthToken } from '@/services/security/KeyManager';
  */
 const DEV_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 const BASE_URL = __DEV__ ? `http://${DEV_HOST}:8080` : 'https://api.roamate.app';
+
+/**
+ * Thrown when the request never reached the server at all (device is
+ * offline, DNS/connection refused, etc.) - distinct from a non-2xx HTTP
+ * response, which means the server *was* reached. Screens that have a local
+ * cache (e.g. MyTripsScreen) catch this specifically to decide whether to
+ * show an "offline, showing saved data" state.
+ */
+export class NetworkUnavailableError extends Error {
+  readonly cause?: unknown;
+
+  constructor(cause: unknown) {
+    super('Network request failed - device appears to be offline');
+    this.name = 'NetworkUnavailableError';
+    this.cause = cause;
+  }
+}
 
 /**
  * DEV-ONLY bootstrap: if no token is cached yet, silently obtain one from
@@ -43,17 +60,38 @@ async function ensureDevToken(): Promise<string | null> {
   return data.accessToken;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = path.startsWith('/api/v1/auth') ? null : await ensureDevToken();
+async function doFetch(path: string, method: string, token: string | null, body?: unknown, extraHeaders?: Record<string, string>) {
+  try {
+    return await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extraHeaders,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    // fetch() itself throwing (not a non-2xx response) means the request
+    // never reached the server - no connectivity, not a server-side error.
+    throw new NetworkUnavailableError(err);
+  }
+}
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const isAuthPath = path.startsWith('/api/v1/auth');
+  const token = isAuthPath ? null : await ensureDevToken();
+
+  let response = await doFetch(path, method, token, body);
+
+  // A cached token can go bad without the app knowing - it expired (24h TTL)
+  // or the backend restarted with a different JWT_SECRET, so the signature
+  // no longer validates. Drop it and get a fresh one, once, before giving up.
+  if (response.status === 401 && !isAuthPath) {
+    await clearAuthToken();
+    const freshToken = await ensureDevToken();
+    response = await doFetch(path, method, freshToken, body);
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -71,13 +109,7 @@ export const apiClient = {
   delete: <T>(path: string) => request<T>('DELETE', path),
   download: async (path: string): Promise<ArrayBuffer> => {
     const token = await ensureDevToken();
-    const response = await fetch(`${BASE_URL}${path}`, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/octet-stream',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
+    const response = await doFetch(path, 'GET', token, undefined, { Accept: 'application/octet-stream' });
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');

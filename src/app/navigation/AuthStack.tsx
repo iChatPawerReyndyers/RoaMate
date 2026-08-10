@@ -3,11 +3,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import CreateTripScreen from '@/features/trip/CreateTripScreen';
 import JoinTripScreen from '@/features/trip/JoinTripScreen';
+import ScanQRScreen from '@/features/trip/ScanQRScreen';
 import { useTrip } from '@/app/TripContext';
 
 export type AuthStackParamList = {
   CreateTrip: undefined;
-  JoinTrip: undefined;
+  JoinTrip: { inviteCode?: string } | undefined;
+  ScanQR: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -39,6 +41,9 @@ export default function AuthStack() {
             }}
           />
         )}
+      </Stack.Screen>
+      <Stack.Screen name="ScanQR" options={{ title: 'Scan QR' }}>
+        {props => <ScanQRScreen {...props} />}
       </Stack.Screen>
     </Stack.Navigator>
   );

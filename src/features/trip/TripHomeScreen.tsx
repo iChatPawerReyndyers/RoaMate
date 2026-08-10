@@ -27,7 +27,12 @@ export default function TripHomeScreen() {
     }
 
     loadMembers();
-  }, [currentTrip, setTripMembers]);
+    // Intentionally keyed on tripId, not the whole currentTrip object: this
+    // effect calls setTripMembers, which produces a new currentTrip object
+    // (new members array) every time it runs. Depending on currentTrip
+    // itself would re-trigger this same effect on every successful fetch,
+    // looping forever - "Loading members..." would never settle.
+  }, [currentTrip?.tripId, setTripMembers]);
 
   if (!currentTrip) {
     return null;

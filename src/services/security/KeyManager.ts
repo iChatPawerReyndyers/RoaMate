@@ -32,6 +32,17 @@ export async function setAuthToken(token: string): Promise<void> {
   await Keychain.setGenericPassword('roamate', token, { service: AUTH_TOKEN_SERVICE });
 }
 
+/**
+ * Drops the cached dev token. Needed when the backend rejects it with 401 -
+ * e.g. it expired (24h TTL from AuthController), or the backend was
+ * restarted with a different JWT_SECRET than what signed this token. Without
+ * this, ensureDevToken() in client.ts would keep reusing the same bad token
+ * forever since it only fetches a new one when none is cached.
+ */
+export async function clearAuthToken(): Promise<void> {
+  await Keychain.resetGenericPassword({ service: AUTH_TOKEN_SERVICE });
+}
+
 export async function getDeviceId(): Promise<string> {
   const cached = storage.getString('device_id');
   if (cached) return cached;
