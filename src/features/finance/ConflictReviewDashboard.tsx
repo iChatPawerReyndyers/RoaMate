@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, SafeAreaView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
+import { useTrip } from '@/app/TripContext';
 
 interface FlaggedExpense {
   id: string;
@@ -31,6 +32,8 @@ interface Props {
 export default function ConflictReviewDashboard({ tripId }: Props) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const { currentTrip } = useTrip();
+  const currency = currentTrip?.defaultCurrency ?? 'USD';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,7 +94,7 @@ export default function ConflictReviewDashboard({ tripId }: Props) {
                 <View style={styles.expenseBody}>
                   <Text style={styles.description}>{expense.description}</Text>
                   <Text style={styles.meta}>
-                    {Cents.format(expense.totalAmountCents as any)} · logged by {expense.createdByUserId} ·{' '}
+                    {Cents.format(Cents.of(expense.totalAmountCents), currency)} · logged by {expense.createdByUserId} ·{' '}
                     {new Date(expense.expenseDateIso).toLocaleString()}
                   </Text>
                 </View>

@@ -17,6 +17,7 @@ interface Member {
 interface Props {
   tripId: string;
   tripMembers: Member[];
+  currency: string;
 }
 
 /**
@@ -24,7 +25,7 @@ interface Props {
  * Charlie: $0". Posts to the existing /kitty-deposits endpoints - those
  * already existed on the backend, this screen was the missing piece.
  */
-export default function KittyDepositScreen({ tripId, tripMembers }: Props) {
+export default function KittyDepositScreen({ tripId, tripMembers, currency }: Props) {
   const [deposits, setDeposits] = useState<KittyDeposit[]>([]);
   const [depositorUserId, setDepositorUserId] = useState(tripMembers[0]?.userId ?? '');
   const [amountDollars, setAmountDollars] = useState('');
@@ -89,7 +90,7 @@ export default function KittyDepositScreen({ tripId, tripMembers }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Shared trip kitty</Text>
-        <Text style={styles.total}>{Cents.format(Cents.of(totalCents))}</Text>
+        <Text style={styles.total}>{Cents.format(Cents.of(totalCents), currency)}</Text>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Contributions</Text>
@@ -97,7 +98,7 @@ export default function KittyDepositScreen({ tripId, tripMembers }: Props) {
             <View key={member.userId} style={styles.row}>
               <Text style={styles.rowLabel}>{member.displayName}</Text>
               <Text style={styles.rowValue}>
-                {Cents.format(Cents.of(totalsByUser.get(member.userId) ?? 0))}
+                {Cents.format(Cents.of(totalsByUser.get(member.userId) ?? 0), currency)}
               </Text>
             </View>
           ))}
@@ -141,7 +142,7 @@ export default function KittyDepositScreen({ tripId, tripMembers }: Props) {
           .reverse()
           .map(deposit => (
             <Text key={deposit.id} style={styles.recentLine}>
-              {displayName(deposit.depositorUserId)} · {Cents.format(Cents.of(deposit.amount))}
+              {displayName(deposit.depositorUserId)} · {Cents.format(Cents.of(deposit.amount), currency)}
             </Text>
           ))}
       </ScrollView>

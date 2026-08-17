@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { getDeviceId } from '@/services/security/KeyManager';
+import { getCurrentUserId } from '@/services/security/KeyManager';
 import { ElevationTracker } from './ElevationTracker';
 import { PedometerService } from './PedometerService';
 
@@ -19,7 +19,7 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
   const elevationRef = useRef<ElevationTracker | null>(null);
 
   useEffect(() => {
-    getDeviceId().then(setUserId).catch(err => console.warn('Failed to resolve device id', err));
+    getCurrentUserId().then(setUserId).catch(err => console.warn('Failed to resolve current user id', err));
   }, []);
 
   useEffect(() => {

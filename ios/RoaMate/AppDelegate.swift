@@ -2,6 +2,7 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
+import FirebaseCore
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,6 +15,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    // GEO-02/03: @react-native-firebase requires FirebaseApp.configure() to
+    // run before any Firebase module (messaging included) is touched.
+    // Reads GoogleService-Info.plist, which must be added to the Xcode
+    // project target (not just present on disk - see docs/firebase-setup.md)
+    // or this silently does nothing and messaging calls fail later instead.
+    FirebaseApp.configure()
+
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()

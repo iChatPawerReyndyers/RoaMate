@@ -3,6 +3,7 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 import { useNavigation } from '@react-navigation/native';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
+import { useTrip } from '@/app/TripContext';
 
 interface NetBalance {
   userId: string;
@@ -33,6 +34,8 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<string>('');
   const navigation = useNavigation();
+  const { currentTrip } = useTrip();
+  const currency = currentTrip?.defaultCurrency ?? 'USD';
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -81,7 +84,7 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
               {summary.balances.map(balance => (
                 <View key={balance.userId} style={styles.balanceRow}>
                   <Text style={styles.balanceUser}>{balance.userId}</Text>
-                  <Text style={styles.balanceValue}>{Cents.format(Cents.of(balance.netDeltaCents))}</Text>
+                  <Text style={styles.balanceValue}>{Cents.format(Cents.of(balance.netDeltaCents), currency)}</Text>
                 </View>
               ))}
             </View>
@@ -92,7 +95,7 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
               ) : (
                 summary.suggestedTransfers.map(transfer => (
                   <Text key={`${transfer.fromUserId}-${transfer.toUserId}`} style={styles.transferText}>
-                    {transfer.fromUserId} → {transfer.toUserId}: {Cents.format(Cents.of(transfer.amountCents))}
+                    {transfer.fromUserId} → {transfer.toUserId}: {Cents.format(Cents.of(transfer.amountCents), currency)}
                   </Text>
                 ))
               )}

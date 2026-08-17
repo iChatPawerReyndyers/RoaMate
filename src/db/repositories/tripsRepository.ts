@@ -23,6 +23,7 @@ export interface CachedTrip {
   name: string;
   inviteCode: string;
   memberCount: number;
+  defaultCurrency: string;
 }
 
 /**
@@ -88,6 +89,10 @@ export async function getCachedTrips(database: Database): Promise<CachedTrip[]> 
       name: trip.name,
       inviteCode: trip.inviteCode,
       memberCount,
+      // Was already being written on every cache (see above) but never
+      // read back out here - FIN-02 needs it downstream for currency-aware
+      // formatting, so it was silently lost on the offline-fallback path.
+      defaultCurrency: trip.defaultCurrency ?? 'USD',
     });
   }
   return result;

@@ -19,7 +19,7 @@ interface Props {
   items: Item[];
   onToggle: (id: string) => void;
   onConvertToExpense?: (id: string) => void;
-  onAddItem: (label: string) => void;
+  onAddItem: (label: string, visibility: 'PERSONAL' | 'SHARED') => void;
   templateOptions: TemplateOption[];
   onPickTemplate: (option: TemplateOption) => void;
   onSaveCurrentAsTemplate: () => void;
@@ -38,11 +38,16 @@ export default function ChecklistScreen({
   onSaveCurrentAsTemplate,
 }: Props) {
   const [newItemLabel, setNewItemLabel] = useState('');
+  // CHK-01: was previously hardcoded to SHARED at the call site with no way
+  // to actually create a Personal (device/account-only, not synced to the
+  // group) item, even though the field, badge and backend filtering all
+  // already supported it end-to-end.
+  const [newItemVisibility, setNewItemVisibility] = useState<'PERSONAL' | 'SHARED'>('SHARED');
 
   const handleAdd = () => {
     const trimmed = newItemLabel.trim();
     if (!trimmed) return;
-    onAddItem(trimmed);
+    onAddItem(trimmed, newItemVisibility);
     setNewItemLabel('');
   };
 
@@ -106,6 +111,24 @@ export default function ChecklistScreen({
         ListEmptyComponent={<Text style={styles.empty}>No items yet - pick a template above or add one below.</Text>}
       />
 
+      <View style={styles.visibilityPickerRow}>
+        <TouchableOpacity
+          style={[styles.visibilityChip, newItemVisibility === 'SHARED' && styles.visibilityChipActive]}
+          onPress={() => setNewItemVisibility('SHARED')}
+        >
+          <Text style={[styles.visibilityChipText, newItemVisibility === 'SHARED' && styles.visibilityChipTextActive]}>
+            Shared
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.visibilityChip, newItemVisibility === 'PERSONAL' && styles.visibilityChipActive]}
+          onPress={() => setNewItemVisibility('PERSONAL')}
+        >
+          <Text style={[styles.visibilityChipText, newItemVisibility === 'PERSONAL' && styles.visibilityChipTextActive]}>
+            Personal
+          </Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.addRow}>
         <TextInput
           style={styles.addInput}
@@ -145,7 +168,12 @@ const styles = StyleSheet.create({
   personalBadgeText: { color: '#777', fontSize: 11, fontWeight: '600' },
   convertLink: { color: '#2f6fed', fontSize: 12, fontWeight: '600' },
   empty: { color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
-  addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  visibilityPickerRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  visibilityChip: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: '#ddd' },
+  visibilityChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
+  visibilityChipText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  visibilityChipTextActive: { color: '#fff' },
+  addRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   addInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
   addButton: { backgroundColor: '#2f6fed', borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' },
   addButtonText: { color: '#fff', fontWeight: '700' },

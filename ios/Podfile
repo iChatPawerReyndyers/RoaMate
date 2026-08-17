@@ -8,6 +8,43 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# GEO-02/03: Firebase's dependency chain includes several Swift pods
+# (FirebaseCoreInternal, etc.) whose own transitive dependencies
+# (GoogleUtilities, and often others further down the chain) don't define
+# Clang modules by default - which Swift requires to import them under
+# static linking. Applied globally rather than pod-by-pod
+# (:modular_headers => true per pod) since Firebase's chain tends to hit
+# this same error on the next transitive dependency each time you patch
+# just the one named in the error. (Error message straight from a real
+# `pod install` run - not guessed.)
+use_modular_headers!
+
+# @rnmapbox/maps: use the real Mapbox SDK, not the MapLibre fallback.
+# Downloading its pods requires an authenticated ~/.netrc entry - see
+# docs/mapbox-setup.md. This line itself carries no secret.
+$RNMapboxMapsImpl = 'mapbox'
+
+# GEO-02/03: @react-native-firebase's documented fix for Swift AppDelegate
+# builds failing with "No such module 'FirebaseCore'". Without this, the
+# project's default static linking (see USE_FRAMEWORKS below - unset by
+# default) doesn't produce a Clang module for Swift's `import FirebaseCore`
+# to find. This makes RNFirebase's own podspecs build their Firebase
+# dependencies with modular headers even as static libraries, which is
+# narrower than switching the whole project to use_frameworks! (avoids
+# potentially affecting how Mapbox/WatermelonDB's pods link).
+$RNFirebaseAsStaticFramework = true
+
+# RNFirebase 26.x defaults to resolving the actual Firebase SDK via Swift
+# Package Manager rather than CocoaPods sub-pods. SPM's products are
+# automatic libraries, not static ones, so under this project's static
+# linkage (see USE_FRAMEWORKS below) each RNFirebase pod that pulls Firebase
+# via SPM embeds its own copy - which collide as duplicate-symbol errors at
+# link time. Disabling SPM here makes it fall back to resolving Firebase
+# through CocoaPods instead, which $RNFirebaseAsStaticFramework above is
+# written for. (Error message straight from a real `pod install` run on
+# this exact RNFirebase version - not guessed.)
+$RNFirebaseDisableSPM = true
+
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green

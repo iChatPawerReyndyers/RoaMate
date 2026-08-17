@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "135709688042",
+    "project_id": "roamate-travel",
+    "storage_bucket": "roamate-travel.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:135709688042:android:32b064f376310966609793",
+        "android_client_info": {
+          "package_name": "com.roamate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBRoGOPdsf3P5kWRcZn4irVP7SZXkWTQU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

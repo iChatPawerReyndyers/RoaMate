@@ -131,3 +131,10 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// GEO-02/03: reads android/app/google-services.json (from your Firebase
+// project) to configure this app for FCM. Must be applied at the *bottom*
+// of this file, after the Android application plugin - Firebase's own
+// requirement, not a style choice. Build fails without a real
+// google-services.json in place - see docs/firebase-setup.md.
+apply plugin: "com.google.gms.google-services"

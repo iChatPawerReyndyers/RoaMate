@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { apiClient } from '@/services/api/client';
+import { apiClient, ApiError } from '@/services/api/client';
 import { useSync } from '@/sync/SyncContext';
+import { useTrip } from '@/app/TripContext';
+import { useAccount } from '@/app/AccountContext';
 import ItineraryScreen, { Destination } from './ItineraryScreen';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 
@@ -11,12 +13,23 @@ interface Props {
   tripId: string;
 }
 
+const ADMIN_ROLES = new Set(['OWNER', 'CO_ORGANIZER']);
+
 export default function ItineraryContainer({ tripId }: Props) {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Itinerary'>>();
+  // Rendered inside the Itinerary tab (see TripTabs.tsx > ItineraryHubScreen),
+  // so the nearest stack ancestor is the 'Home' screen that hosts the tabs.
+  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
   const syncManager = useSync();
+  const { currentTrip } = useTrip();
+  const { account } = useAccount();
+
+  // TRIP-02: "Admin can edit core itineraries" - everything else in the app
+  // is open to all participants, so this is the only place that reads role.
+  const myRole = currentTrip?.members.find(m => m.userId === account?.userId)?.role;
+  const isAdmin = myRole ? ADMIN_ROLES.has(myRole) : false;
 
   const loadDestinations = useCallback(async () => {
     setLoading(true);
@@ -33,11 +46,18 @@ export default function ItineraryContainer({ tripId }: Props) {
     }
   }, [tripId]);
 
-  useEffect(() => {
-    loadDestinations();
-  }, [loadDestinations]);
+  // DestinationForm is pushed on top of the Home screen (which hosts this
+  // tab) and pops back to it after saving - Home itself never remounts, so
+  // a mount-only effect wouldn't pick up the newly added/edited destination.
+  // useFocusEffect covers both the initial load and every return to focus.
+  useFocusEffect(
+    useCallback(() => {
+      loadDestinations();
+    }, [loadDestinations]),
+  );
 
   const handleReorder = async (orderedIds: string[]) => {
+    const previousDestinations = destinations;
     const nextDestinations = orderedIds
       .map(id => destinations.find(destination => destination.id === id))
       .filter((destination): destination is Destination => destination !== undefined);
@@ -47,6 +67,15 @@ export default function ItineraryContainer({ tripId }: Props) {
     try {
       await apiClient.post('/api/v1/itinerary/destinations/reorder', orderedIds);
     } catch (err) {
+      // A 403 (TRIP-02: non-admin) is a real, permanent rejection - it'll
+      // never succeed by retrying later, so revert the optimistic reorder
+      // and surface it, rather than silently queueing it for sync like a
+      // transient/offline failure below.
+      if (err instanceof ApiError && err.status === 403) {
+        setDestinations(previousDestinations);
+        Alert.alert("Can't reorder", 'Only trip admins can edit the itinerary.');
+        return;
+      }
       console.warn('Failed to persist itinerary reorder, queued for sync', err);
       await syncManager.enqueueEvent({
         tripId,
@@ -76,6 +105,7 @@ export default function ItineraryContainer({ tripId }: Props) {
   return (
     <ItineraryScreen
       destinations={destinations}
+      isAdmin={isAdmin}
       onReorder={handleReorder}
       onOpenNotes={(destinationId, destinationName) => {
         navigation.navigate('DestinationNotes', { destinationId, destinationName });

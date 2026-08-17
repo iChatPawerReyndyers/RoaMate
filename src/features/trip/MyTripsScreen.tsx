@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, FlatList } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, FlatList, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { apiClient, NetworkUnavailableError } from '@/services/api/client';
 import { useTrip } from '@/app/TripContext';
+import { useAccount } from '@/app/AccountContext';
 import { cacheTripsFromServer, getCachedTrips, CachedTrip, TripDto } from '@/db/repositories/tripsRepository';
+import AccountBadge from '@/features/account/AccountBadge';
 
 /**
  * TRIP-01: landing screen on every app open. Always tries the server first
@@ -16,6 +18,7 @@ export default function MyTripsScreen() {
   const database = useDatabase();
   const navigation = useNavigation();
   const { setCurrentTrip } = useTrip();
+  const { account, logout } = useAccount();
 
   const [trips, setTrips] = useState<CachedTrip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +37,7 @@ export default function MyTripsScreen() {
           name: trip.name,
           inviteCode: trip.inviteCode,
           memberCount: trip.members.length,
+          defaultCurrency: trip.defaultCurrency,
         })),
       );
       setIsOffline(false);
@@ -61,7 +65,7 @@ export default function MyTripsScreen() {
   );
 
   const openTrip = async (trip: CachedTrip) => {
-    setCurrentTrip({ tripId: trip.serverId, inviteCode: trip.inviteCode, name: trip.name });
+    setCurrentTrip({ tripId: trip.serverId, inviteCode: trip.inviteCode, name: trip.name, defaultCurrency: trip.defaultCurrency });
     navigation.navigate('Trip' as never);
   };
 
@@ -69,8 +73,23 @@ export default function MyTripsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>My trips</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('Auth' as never)}>
-          <Text style={styles.addButtonText}>+</Text>
+        <View style={styles.headerRight}>
+          {account?.username ? <AccountBadge username={account.username} /> : null}
+          <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('Auth' as never)}>
+            <Text style={styles.addButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.accountRow}>
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert('Log out?', 'You can log back in with your username and password.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Log out', style: 'destructive', onPress: () => logout() },
+            ])
+          }
+        >
+          <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
       </View>
 
@@ -113,7 +132,10 @@ export default function MyTripsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  accountRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
+  logoutText: { fontSize: 12, color: '#b00020', fontWeight: '600' },
   title: { fontSize: 22, fontWeight: '700' },
   addButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2f6fed', alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: -2 },

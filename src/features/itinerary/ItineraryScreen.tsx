@@ -20,6 +20,7 @@ export interface Destination {
 
 interface Props {
   destinations: Destination[];
+  isAdmin: boolean;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
@@ -29,9 +30,17 @@ interface Props {
 
 const ROW_HEIGHT = 210; // approximate rendered height of one PinnedLocationCard row, used to convert drag distance into index deltas
 
-/** ITIN-01: per-day itinerary list with drag-to-reorder (react-native-gesture-handler). */
+/**
+ * ITIN-01: per-day itinerary list with drag-to-reorder (react-native-gesture-handler).
+ * TRIP-02: "Admin can edit core itineraries" - adding, reordering and editing
+ * destinations is gated on isAdmin; everything else in the app (expenses,
+ * notes, activities, checklists, conflict review, privacy toggles) is
+ * intentionally left open to all participants per spec, so this is the only
+ * screen in the app with a role gate.
+ */
 export default function ItineraryScreen({
   destinations,
+  isAdmin,
   onReorder,
   onOpenNotes,
   onStartActivity,
@@ -65,15 +74,20 @@ export default function ItineraryScreen({
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <TouchableOpacity style={styles.addButton} onPress={onAddDestination}>
-          <Text style={styles.addButtonText}>+ Add destination</Text>
-        </TouchableOpacity>
+        {isAdmin ? (
+          <TouchableOpacity style={styles.addButton} onPress={onAddDestination}>
+            <Text style={styles.addButtonText}>+ Add destination</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.readOnlyHint}>Only trip admins can add or reorder destinations.</Text>
+        )}
 
         {Object.entries(byDay).map(([day, stops]) => (
           <DaySection
             key={day}
             day={day}
             stops={stops}
+            isAdmin={isAdmin}
             onReorder={orderedIds => handleDayReorder(day, orderedIds)}
             onOpenNotes={onOpenNotes}
             onStartActivity={onStartActivity}
@@ -88,6 +102,7 @@ export default function ItineraryScreen({
 function DaySection({
   day,
   stops,
+  isAdmin,
   onReorder,
   onOpenNotes,
   onStartActivity,
@@ -95,6 +110,7 @@ function DaySection({
 }: {
   day: string;
   stops: Destination[];
+  isAdmin: boolean;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
@@ -123,28 +139,39 @@ function DaySection({
       {order.map((id, index) => {
         const stop = stopsById.get(id);
         if (!stop) return null;
-        return (
-          <DraggableRow
-            key={id}
-            index={index}
-            lastIndex={order.length - 1}
-            onDrop={moveBy => handleDrop(id, moveBy)}
-          >
-            <View style={styles.itemRow}>
-              <PinnedLocationCard
-                destinationId={stop.id}
-                name={stop.name}
-                dayLabel={day}
-                lat={stop.lat}
-                lng={stop.lng}
-                attachmentUrls={stop.attachmentUrls}
-                onAddNote={() => onOpenNotes(stop.id, stop.name)}
-                onStartActivity={() => onStartActivity(stop.id, stop.name)}
-              />
+        const row = (
+          <View style={styles.itemRow}>
+            <PinnedLocationCard
+              destinationId={stop.id}
+              name={stop.name}
+              dayLabel={day}
+              lat={stop.lat}
+              lng={stop.lng}
+              attachmentUrls={stop.attachmentUrls}
+              onAddNote={() => onOpenNotes(stop.id, stop.name)}
+              onStartActivity={() => onStartActivity(stop.id, stop.name)}
+            />
+            {isAdmin && (
               <TouchableOpacity style={styles.editButton} onPress={() => onEditDestination(stop.id)}>
                 <Text style={styles.editButtonText}>Edit</Text>
               </TouchableOpacity>
+            )}
+          </View>
+        );
+
+        // Participants get a plain, non-draggable row - drag-to-reorder is
+        // an itinerary edit, which is admin-only.
+        if (!isAdmin) {
+          return (
+            <View key={id} style={styles.readOnlyRow}>
+              {row}
             </View>
+          );
+        }
+
+        return (
+          <DraggableRow key={id} index={index} lastIndex={order.length - 1} onDrop={moveBy => handleDrop(id, moveBy)}>
+            {row}
           </DraggableRow>
         );
       })}
@@ -220,6 +247,8 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 24 },
   addButton: { margin: 16, backgroundColor: '#2f6fed', borderRadius: 10, padding: 12, alignItems: 'center' },
   addButtonText: { color: '#fff', fontWeight: '700' },
+  readOnlyHint: { marginHorizontal: 16, marginTop: 16, marginBottom: 4, fontSize: 12, color: '#888', fontStyle: 'italic' },
+  readOnlyRow: { marginBottom: 12, marginLeft: 28 },
   daySection: { paddingHorizontal: 16, paddingTop: 8 },
   dayHeader: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
   draggableWrapper: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 12, zIndex: 1 },

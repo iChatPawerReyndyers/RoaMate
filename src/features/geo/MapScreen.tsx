@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import Mapbox, { Camera, MapView, PointAnnotation, Callout } from '@rnmapbox/maps';
 import Geolocation from '@react-native-community/geolocation';
 import { apiClient } from '@/services/api/client';
 import { requestLocationPermission } from '@/services/location/requestLocationPermission';
+import OfflineMapControl from './OfflineMapControl';
 
 interface MemberLocation {
   userId: string;
@@ -17,16 +18,11 @@ interface Props {
   tripId: string;
 }
 
-// MapView with no initialRegion defaults its camera to (0, 0) - open ocean
-// off West Africa - which looks like a blank/broken map. This is a
-// reasonable fallback center (Philippines) until real member locations
+// Mapbox coordinates are [longitude, latitude] - the opposite order of the
+// {lat, lng} shape this app's API responses use everywhere else. Centered
+// on the Philippines as a reasonable fallback until real member locations
 // arrive and the camera reframes to them instead.
-const DEFAULT_REGION: Region = {
-  latitude: 12.8797,
-  longitude: 121.774,
-  latitudeDelta: 8,
-  longitudeDelta: 8,
-};
+const DEFAULT_CENTER: [number, number] = [121.774, 12.8797];
 
 /**
  * GEO-01..04: opening this screen triggers the server to fan out a silent
@@ -34,24 +30,43 @@ const DEFAULT_REGION: Region = {
  * (or 5s timeout -> last-known-cache fallback) lands here as a marker with
  * a staleness indicator rather than blocking the whole map on one slow
  * device.
+ *
+ * Offline tile caching (ITIN/GEO spec: 500MB cap) is handled by
+ * OfflineMapControl + services/maps/OfflineMapManager, layered on top as a
+ * download-this-trip's-region control rather than baked into this screen's
+ * own fetch logic.
  */
 export default function MapScreen({ tripId }: Props) {
   const [locations, setLocations] = useState<MemberLocation[]>([]);
   const [loading, setLoading] = useState(true);
-  const mapRef = useRef<MapView>(null);
+  const [error, setError] = useState<string | null>(null);
+  const cameraRef = useRef<Camera>(null);
 
   const fetchLocations = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const result = await apiClient.get<MemberLocation[]>(`/api/v1/geo/trips/${tripId}/locations`);
       setLocations(result);
 
       if (result.length > 0) {
-        mapRef.current?.fitToCoordinates(
-          result.map(loc => ({ latitude: loc.lat, longitude: loc.lng })),
-          { edgePadding: { top: 80, right: 80, bottom: 80, left: 80 }, animated: true },
+        const lats = result.map(l => l.lat);
+        const lngs = result.map(l => l.lng);
+        const pad = 0.02;
+        cameraRef.current?.fitBounds(
+          [Math.max(...lngs) + pad, Math.max(...lats) + pad],
+          [Math.min(...lngs) - pad, Math.min(...lats) - pad],
+          80,
+          500,
         );
       }
+    } catch (err) {
+      // Previously uncaught here - any failure (expired session, offline,
+      // server error) became an unhandled promise rejection since this
+      // runs fire-and-forget from a useEffect below, which crashes the
+      // whole app with a red-box rather than just this screen misbehaving.
+      console.warn('Failed to fetch member locations', err);
+      setError("Couldn't load member locations. Pull to refresh to try again.");
     } finally {
       setLoading(false);
     }
@@ -77,15 +92,7 @@ export default function MapScreen({ tripId }: Props) {
       Geolocation.getCurrentPosition(
         pos => {
           if (cancelled) return;
-          mapRef.current?.animateToRegion(
-            {
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            },
-            500,
-          );
+          cameraRef.current?.flyTo([pos.coords.longitude, pos.coords.latitude], 500);
         },
         err => console.warn('Could not get current location for map default', err),
         { enableHighAccuracy: true, timeout: 5000 },
@@ -99,15 +106,13 @@ export default function MapScreen({ tripId }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <MapView ref={mapRef} style={StyleSheet.absoluteFill} initialRegion={DEFAULT_REGION}>
+      <MapView style={StyleSheet.absoluteFill} styleURL={Mapbox.StyleURL.Outdoors}>
+        <Camera ref={cameraRef} defaultSettings={{ centerCoordinate: DEFAULT_CENTER, zoomLevel: 5 }} />
         {locations.map(loc => (
-          <Marker
-            key={loc.userId}
-            coordinate={{ latitude: loc.lat, longitude: loc.lng }}
-            title={loc.userId}
-            description={loc.stale ? `Updated ${timeAgo(loc.capturedAt)}` : 'Live'}
-            pinColor={loc.stale ? '#999' : '#2f6fed'}
-          />
+          <PointAnnotation key={loc.userId} id={loc.userId} coordinate={[loc.lng, loc.lat]}>
+            <View style={[styles.pin, loc.stale && styles.pinStale]} />
+            <Callout title={`${loc.userId}${loc.stale ? ` · Updated ${timeAgo(loc.capturedAt)}` : ' · Live'}`} />
+          </PointAnnotation>
         ))}
       </MapView>
       {loading && (
@@ -115,11 +120,17 @@ export default function MapScreen({ tripId }: Props) {
           <Text style={styles.loadingText}>Requesting locations…</Text>
         </View>
       )}
-      {!loading && locations.length === 0 && (
+      {!loading && locations.length === 0 && !error && (
         <View style={styles.emptyBanner}>
           <Text style={styles.loadingText}>No member locations shared yet.</Text>
         </View>
       )}
+      {error && (
+        <View style={styles.emptyBanner}>
+          <Text style={styles.loadingText}>{error}</Text>
+        </View>
+      )}
+      <OfflineMapControl tripId={tripId} coordinates={locations.map(l => ({ lat: l.lat, lng: l.lng }))} />
     </SafeAreaView>
   );
 }
@@ -132,6 +143,8 @@ function timeAgo(iso: string): string {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pin: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#2f6fed', borderWidth: 2, borderColor: '#fff' },
+  pinStale: { backgroundColor: '#999' },
   loadingBanner: { position: 'absolute', top: 12, alignSelf: 'center', backgroundColor: '#0009', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   emptyBanner: { position: 'absolute', top: 12, alignSelf: 'center', backgroundColor: '#0009', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   loadingText: { color: '#fff', fontSize: 12 },

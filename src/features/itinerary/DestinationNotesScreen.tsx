@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { apiClient } from '@/services/api/client';
-import { getDeviceId } from '@/services/security/KeyManager';
+import { getCurrentUserId } from '@/services/security/KeyManager';
 
 interface LocationNote {
   id: string;
@@ -50,7 +50,7 @@ export default function DestinationNotesScreen({ destinationId, destinationName 
     setError(null);
 
     try {
-      const authorUserId = await getDeviceId();
+      const authorUserId = await getCurrentUserId();
       await apiClient.post('/api/v1/itinerary/notes', {
         destinationId,
         authorUserId,

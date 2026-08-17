@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { apiClient } from '@/services/api/client';
+import { apiClient, ApiError } from '@/services/api/client';
 import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 
 interface TripJoinedPayload {
   id: string;
   inviteCode: string;
   name?: string;
+  defaultCurrency: string;
 }
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'JoinTrip'> & {
@@ -23,13 +24,32 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'JoinTrip'> & {
 export default function JoinTripScreen({ route, onJoined }: Props) {
   const [code, setCode] = useState(route.params?.inviteCode ?? '');
   const [displayName, setDisplayName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleJoin = async () => {
-    const joined = await apiClient.post<TripJoinedPayload>('/api/v1/trips/join', {
-      inviteCode: code.toUpperCase(),
-      displayName,
-    });
-    onJoined(joined);
+    if (!code.trim() || !displayName.trim()) {
+      Alert.alert('Missing info', 'Enter both the invite code and your name.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const joined = await apiClient.post<TripJoinedPayload>('/api/v1/trips/join', {
+        inviteCode: code.trim().toUpperCase(),
+        displayName: displayName.trim(),
+      });
+      onJoined(joined);
+    } catch (err) {
+      // Previously uncaught here - matches the same unhandled-promise-rejection
+      // pattern that crashed MapScreen before it got a catch block.
+      console.warn('Failed to join trip', err);
+      if (err instanceof ApiError && err.status === 400) {
+        Alert.alert('Trip not found', "That invite code doesn't match any trip. Double check it and try again.");
+      } else {
+        Alert.alert("Couldn't join trip", 'Check your connection and try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -38,8 +58,8 @@ export default function JoinTripScreen({ route, onJoined }: Props) {
       <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder="AB3XQ9" autoCapitalize="characters" maxLength={6} />
       <Text style={styles.label}>Your name</Text>
       <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} placeholder="Alex" />
-      <TouchableOpacity style={styles.button} onPress={handleJoin}>
-        <Text style={styles.buttonText}>Join Trip</Text>
+      <TouchableOpacity style={styles.button} onPress={handleJoin} disabled={submitting}>
+        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Join Trip</Text>}
       </TouchableOpacity>
     </SafeAreaView>
   );

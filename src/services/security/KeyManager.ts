@@ -51,6 +51,51 @@ export async function getDeviceId(): Promise<string> {
   return id;
 }
 
+export interface StoredAccount {
+  userId: string;
+  username: string;
+}
+
+const ACCOUNT_KEY = 'account_identity';
+
+/**
+ * Username/userId aren't secret, so - like device_id - these live in the
+ * plain MMKV store, not the Keychain (which is reserved for the auth token
+ * and the DB encryption key).
+ */
+export function getStoredAccount(): StoredAccount | null {
+  const raw = storage.getString(ACCOUNT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StoredAccount;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAccount(account: StoredAccount): void {
+  storage.set(ACCOUNT_KEY, JSON.stringify(account));
+}
+
+export function clearStoredAccount(): void {
+  storage.remove(ACCOUNT_KEY);
+}
+
+/**
+ * The id used to tag anything the person does (expenses, checklist items,
+ * activity sessions, sync events, ...). Prefers the logged-in account's
+ * permanent id; falls back to the per-install device id only if called
+ * before login somehow manages to happen - every screen that calls this is
+ * expected to be gated behind RootNavigator's account check, so the
+ * fallback is a safety net, not the normal path.
+ */
+export async function getCurrentUserId(): Promise<string> {
+  const account = getStoredAccount();
+  if (account) return account.userId;
+  console.warn('getCurrentUserId() called with no account logged in - falling back to device id');
+  return getDeviceId();
+}
+
 function generateRandomKey(bytes: number): string {
   const arr = new Uint8Array(bytes);
   // In production, use react-native-get-random-values (crypto polyfill) -

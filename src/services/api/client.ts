@@ -31,33 +31,35 @@ export class NetworkUnavailableError extends Error {
 }
 
 /**
- * DEV-ONLY bootstrap: if no token is cached yet, silently obtain one from
- * the backend's dev-login endpoint (see backend AuthController) using a
- * per-install device id as the userId. This exists purely so screens don't
- * all need to manually wire up a login step before this real auth flow
- * (or a proper login screen) is built. Remove before shipping.
+ * Thrown for any non-2xx response the server actually sent back (as
+ * opposed to NetworkUnavailableError, which means the request never got
+ * there). Carries the HTTP status so callers - e.g. AccountContext telling
+ * a 409 "username taken" apart from a 401 "wrong password" - don't have to
+ * parse it back out of a message string.
  */
-async function ensureDevToken(): Promise<string | null> {
-  const existing = await getAuthToken();
-  if (existing) return existing;
+export class ApiError extends Error {
+  readonly status: number;
 
-  const { getDeviceId } = await import('@/services/security/KeyManager');
-  const deviceId = await getDeviceId();
-
-  const response = await fetch(`${BASE_URL}/api/v1/auth/dev-login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: deviceId }),
-  });
-
-  if (!response.ok) {
-    console.warn('Dev auto-login failed:', response.status);
-    return null;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
   }
+}
 
-  const data = await response.json();
-  await setAuthToken(data.accessToken);
-  return data.accessToken;
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/**
+ * AccountContext registers itself here on mount. When a request comes back
+ * 401 outside of /api/v1/auth/**, it means the cached token is no longer
+ * valid (expired, or the server rotated its signing secret) and - unlike
+ * the old dev-login bootstrap - there's no way to silently mint a fresh
+ * one without real credentials. The cleanest recovery is to drop the local
+ * session and send the person back to the sign-in screen.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
 }
 
 async function doFetch(path: string, method: string, token: string | null, body?: unknown, extraHeaders?: Record<string, string>) {
@@ -80,22 +82,18 @@ async function doFetch(path: string, method: string, token: string | null, body?
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const isAuthPath = path.startsWith('/api/v1/auth');
-  const token = isAuthPath ? null : await ensureDevToken();
+  const token = isAuthPath ? null : await getAuthToken();
 
-  let response = await doFetch(path, method, token, body);
+  const response = await doFetch(path, method, token, body);
 
-  // A cached token can go bad without the app knowing - it expired (24h TTL)
-  // or the backend restarted with a different JWT_SECRET, so the signature
-  // no longer validates. Drop it and get a fresh one, once, before giving up.
   if (response.status === 401 && !isAuthPath) {
     await clearAuthToken();
-    const freshToken = await ensureDevToken();
-    response = await doFetch(path, method, freshToken, body);
+    unauthorizedHandler?.();
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`API ${method} ${path} failed: ${response.status} ${text}`);
+    throw new ApiError(response.status, text || `API ${method} ${path} failed: ${response.status}`);
   }
 
   if (response.status === 204) return undefined as T;
@@ -108,12 +106,12 @@ export const apiClient = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
   download: async (path: string): Promise<ArrayBuffer> => {
-    const token = await ensureDevToken();
+    const token = await getAuthToken();
     const response = await doFetch(path, 'GET', token, undefined, { Accept: 'application/octet-stream' });
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new Error(`API GET ${path} failed: ${response.status} ${text}`);
+      throw new ApiError(response.status, text || `API GET ${path} failed: ${response.status}`);
     }
 
     return response.arrayBuffer();

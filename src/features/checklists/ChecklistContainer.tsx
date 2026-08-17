@@ -6,7 +6,7 @@ import { useDatabase } from '@nozbe/watermelondb/react';
 import ChecklistScreen, { Item } from './ChecklistScreen';
 import { TemplateOption } from './TemplatePicker';
 import { apiClient } from '@/services/api/client';
-import { getDeviceId } from '@/services/security/KeyManager';
+import { getCurrentUserId } from '@/services/security/KeyManager';
 import { useSync } from '@/sync/SyncContext';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import { PACKING_TEMPLATES, GROCERY_TEMPLATE } from './templates';
@@ -25,11 +25,13 @@ export default function ChecklistContainer({ tripId }: Props) {
   const [customTemplates, setCustomTemplates] = useState<TemplateOption[]>([]);
   const syncManager = useSync();
   const database = useDatabase();
-  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Checklist'>>();
+  // Rendered inside the Checklist tab (see TripTabs.tsx), so the nearest
+  // stack ancestor is the 'Home' screen that hosts the tab navigator.
+  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
 
   const loadItems = useCallback(async () => {
     try {
-      const userId = await getDeviceId();
+      const userId = await getCurrentUserId();
       const result = await apiClient.get<Item[]>(
         `/api/v1/checklists/trips/${tripId}?category=${category}&requestingUserId=${encodeURIComponent(userId)}`,
       );
@@ -76,14 +78,14 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const templateOptions = [...builtInTemplateOptions, ...customTemplates];
 
-  const addSingleItem = async (label: string) => {
-    const userId = await getDeviceId();
+  const addSingleItem = async (label: string, visibility: 'PERSONAL' | 'SHARED' = 'SHARED') => {
+    const userId = await getCurrentUserId();
     try {
       const created = await apiClient.post<Item>('/api/v1/checklists/items', {
         tripId,
         category,
         label,
-        visibility: 'SHARED',
+        visibility,
         ownerUserId: userId,
         ...(category === 'GROCERY' ? { quantity: 1, priority: 'MEDIUM' } : {}),
       });

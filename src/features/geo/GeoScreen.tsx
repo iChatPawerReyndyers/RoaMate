@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import EmergencyBeacon from './EmergencyBeacon';
 import LocationSharingToggle from './LocationSharingToggle';
-import { getDeviceId } from '@/services/security/KeyManager';
+import { getCurrentUserId } from '@/services/security/KeyManager';
 
 interface Props {
   tripId: string;
@@ -13,7 +13,7 @@ export default function GeoScreen({ tripId }: Props) {
   const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {
-    getDeviceId().then(setUserId).catch(err => console.warn('Failed to resolve device id', err));
+    getCurrentUserId().then(setUserId).catch(err => console.warn('Failed to resolve device id', err));
   }, []);
 
   return (
