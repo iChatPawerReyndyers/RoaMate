@@ -78,7 +78,11 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const templateOptions = [...builtInTemplateOptions, ...customTemplates];
 
-  const addSingleItem = async (label: string, visibility: 'PERSONAL' | 'SHARED' = 'SHARED') => {
+  const addSingleItem = async (
+    label: string,
+    visibility: 'PERSONAL' | 'SHARED' = 'SHARED',
+    packingItemCategory?: Item['packingItemCategory'],
+  ) => {
     const userId = await getCurrentUserId();
     try {
       const created = await apiClient.post<Item>('/api/v1/checklists/items', {
@@ -88,6 +92,7 @@ export default function ChecklistContainer({ tripId }: Props) {
         visibility,
         ownerUserId: userId,
         ...(category === 'GROCERY' ? { quantity: 1, priority: 'MEDIUM' } : {}),
+        ...(category === 'PACKING' && packingItemCategory ? { packingItemCategory } : {}),
       });
       setItems(prev => [...prev, created]);
     } catch (err) {

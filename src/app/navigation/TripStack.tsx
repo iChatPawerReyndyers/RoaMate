@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import ExpenseEntryScreen from '@/features/finance/ExpenseEntryScreen';
 import ActivityDashboardScreen from '@/features/activity/ActivityDashboardScreen';
@@ -9,8 +10,10 @@ import PaymentSourceScreen from '@/features/checklists/PaymentSourceScreen';
 import KittyDepositScreen from '@/features/finance/KittyDepositScreen';
 import GeoScreen from '@/features/geo/GeoScreen';
 import { useTrip } from '@/app/TripContext';
+import { useSync } from '@/sync/SyncContext';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
+import { useAutoOfflineMapSync } from '@/services/maps/AutoOfflineMapSync';
 
 // NOTE: Map, Checklist, ReviewDuplicates and FinanceSummary used to be
 // top-level routes here, reachable only from the old TripHomeScreen card
@@ -51,6 +54,8 @@ const Stack = createNativeStackNavigator<TripStackParamList>();
 
 export default function TripStack() {
   const { currentTrip } = useTrip();
+  const syncManager = useSync();
+  useAutoOfflineMapSync(currentTrip?.tripId ?? null);
 
   if (!currentTrip) {
     return null;
@@ -66,8 +71,13 @@ export default function TripStack() {
             initialDescription={route.params?.description}
             initialPaymentSource={route.params?.initialPaymentSource}
             onSubmit={async payload => {
-              try {
-                if (route.params?.itemId) {
+              if (route.params?.itemId) {
+                // Checklist-to-expense conversion isn't covered by offline
+                // sync yet (see backend ExpenseCreatedApplier's doc
+                // comment - it's a two-step operation the applier doesn't
+                // handle) - surface the failure rather than queueing
+                // something the server can't apply on reconnect.
+                try {
                   await apiClient.post(`/api/v1/checklists/items/${route.params.itemId}/convert-to-expense`, {
                     ...payload,
                     tripId: currentTrip.tripId,
@@ -75,19 +85,39 @@ export default function TripStack() {
                     expenseDate: new Date().toISOString(),
                     category: null,
                   });
-                } else {
-                  await apiClient.post('/api/v1/finance/expenses', {
-                    ...payload,
-                    tripId: currentTrip.tripId,
-                    createdByUserId: await getCurrentUserId(),
-                    expenseDate: new Date().toISOString(),
-                    category: null,
-                  });
+                  navigation.navigate('Home');
+                } catch (err) {
+                  console.warn('Failed to convert checklist item to expense', err);
+                  Alert.alert("Couldn't save expense", 'Check your connection and try again.');
                 }
-                navigation.navigate('Home');
-              } catch (err) {
-                console.warn('Failed to submit expense', err);
+                return;
               }
+
+              const expensePayload = {
+                ...payload,
+                tripId: currentTrip.tripId,
+                createdByUserId: await getCurrentUserId(),
+                expenseDate: new Date().toISOString(),
+                category: null,
+              };
+              try {
+                await apiClient.post('/api/v1/finance/expenses', expensePayload);
+              } catch (err) {
+                // FIN-01/03: offline-first means a failed post here queues
+                // for later sync instead of the expense silently vanishing
+                // (previously: caught, logged, and dropped) - mirrors the
+                // same pattern ItineraryContainer uses for reorders. The
+                // backend already applies this exact event type
+                // (ExpenseCreatedApplier), it just wasn't being sent.
+                console.warn('Failed to submit expense, queued for sync', err);
+                await syncManager.enqueueEvent({
+                  tripId: currentTrip.tripId,
+                  eventType: 'EXPENSE_CREATED',
+                  clientTimestamp: Date.now(),
+                  payloadJson: JSON.stringify(expensePayload),
+                });
+              }
+              navigation.navigate('Home');
             }}
           />
         )}

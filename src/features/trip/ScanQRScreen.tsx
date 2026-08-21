@@ -7,14 +7,17 @@ import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 type Props = NativeStackScreenProps<AuthStackParamList, 'ScanQR'>;
 
 /**
- * TRIP-01: scans a trip's invite QR and hands the decoded invite code to
- * JoinTripScreen for confirmation, rather than joining directly - lets the
- * person correct a misread or a QR meant for a different trip.
+ * TRIP-01: scans a trip's invite QR and hands the decoded invite code
+ * (plus its embedded cryptographic secret, if present) to JoinTripScreen
+ * for confirmation, rather than joining directly - lets the person correct
+ * a misread or a QR meant for a different trip.
  *
- * InviteQRCode encodes JSON ({v, tripId, inviteCode}), not a bare code, so
- * scanned text is parsed accordingly. Falls back to treating the raw scan
- * as the code itself, in case a trip's invite is ever shared as plain text
- * turned into a QR by some other means.
+ * InviteQRCode encodes JSON ({v, tripId, inviteCode, inviteSecret}), not a
+ * bare code, so scanned text is parsed accordingly. Falls back to treating
+ * the raw scan as the code itself, in case a trip's invite is ever shared
+ * as plain text turned into a QR by some other means - in that fallback
+ * case there's no secret to forward, so the join request behaves exactly
+ * like a manually typed code.
  */
 export default function ScanQRScreen({ navigation }: Props) {
   const device = useCameraDevice('back');
@@ -35,15 +38,17 @@ export default function ScanQRScreen({ navigation }: Props) {
       if (!raw) return;
 
       let inviteCode = raw.trim();
+      let inviteSecret: string | undefined;
       try {
         const parsed = JSON.parse(raw);
         if (parsed?.inviteCode) inviteCode = String(parsed.inviteCode);
+        if (parsed?.inviteSecret) inviteSecret = String(parsed.inviteSecret);
       } catch {
         // Not JSON - treat the raw scanned text as the code itself.
       }
 
       setScanned(true);
-      navigation.replace('JoinTrip', { inviteCode: inviteCode.toUpperCase() });
+      navigation.replace('JoinTrip', { inviteCode: inviteCode.toUpperCase(), inviteSecret });
     },
   });
 

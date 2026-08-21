@@ -11,6 +11,14 @@ export interface Item {
   quantity?: number;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
   storeCategory?: string;
+  /** CHK-01: PACKING-only sub-category. Unused for GROCERY items (see storeCategory instead). */
+  packingItemCategory?: 'CLOTHING' | 'ELECTRONICS' | 'TOILETRIES' | 'GEAR';
+}
+
+const PACKING_CATEGORIES: NonNullable<Item['packingItemCategory']>[] = ['CLOTHING', 'ELECTRONICS', 'TOILETRIES', 'GEAR'];
+
+function formatPackingCategory(value: NonNullable<Item['packingItemCategory']>): string {
+  return value.charAt(0) + value.slice(1).toLowerCase();
 }
 
 interface Props {
@@ -19,7 +27,7 @@ interface Props {
   items: Item[];
   onToggle: (id: string) => void;
   onConvertToExpense?: (id: string) => void;
-  onAddItem: (label: string, visibility: 'PERSONAL' | 'SHARED') => void;
+  onAddItem: (label: string, visibility: 'PERSONAL' | 'SHARED', packingItemCategory?: Item['packingItemCategory']) => void;
   templateOptions: TemplateOption[];
   onPickTemplate: (option: TemplateOption) => void;
   onSaveCurrentAsTemplate: () => void;
@@ -43,12 +51,14 @@ export default function ChecklistScreen({
   // group) item, even though the field, badge and backend filtering all
   // already supported it end-to-end.
   const [newItemVisibility, setNewItemVisibility] = useState<'PERSONAL' | 'SHARED'>('SHARED');
+  const [newItemPackingCategory, setNewItemPackingCategory] = useState<Item['packingItemCategory']>(undefined);
 
   const handleAdd = () => {
     const trimmed = newItemLabel.trim();
     if (!trimmed) return;
-    onAddItem(trimmed, newItemVisibility);
+    onAddItem(trimmed, newItemVisibility, category === 'PACKING' ? newItemPackingCategory : undefined);
     setNewItemLabel('');
+    setNewItemPackingCategory(undefined);
   };
 
   return (
@@ -90,6 +100,9 @@ export default function ChecklistScreen({
                     {item.storeCategory ?? ''}
                   </Text>
                 ) : null}
+                {category === 'PACKING' && item.packingItemCategory ? (
+                  <Text style={styles.metaText}>{formatPackingCategory(item.packingItemCategory)}</Text>
+                ) : null}
               </View>
             </TouchableOpacity>
             <View style={styles.badgeColumn}>
@@ -129,6 +142,21 @@ export default function ChecklistScreen({
           </Text>
         </TouchableOpacity>
       </View>
+      {category === 'PACKING' ? (
+        <View style={styles.categoryPickerRow}>
+          {PACKING_CATEGORIES.map(c => (
+            <TouchableOpacity
+              key={c}
+              style={[styles.categoryChip, newItemPackingCategory === c && styles.categoryChipActive]}
+              onPress={() => setNewItemPackingCategory(newItemPackingCategory === c ? undefined : c)}
+            >
+              <Text style={[styles.categoryChipText, newItemPackingCategory === c && styles.categoryChipTextActive]}>
+                {formatPackingCategory(c)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.addRow}>
         <TextInput
           style={styles.addInput}
@@ -173,6 +201,11 @@ const styles = StyleSheet.create({
   visibilityChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
   visibilityChipText: { fontSize: 12, fontWeight: '600', color: '#666' },
   visibilityChipTextActive: { color: '#fff' },
+  categoryPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  categoryChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: '#ddd' },
+  categoryChipActive: { backgroundColor: '#eef2ff', borderColor: '#2f6fed' },
+  categoryChipText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  categoryChipTextActive: { color: '#2f6fed' },
   addRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   addInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
   addButton: { backgroundColor: '#2f6fed', borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' },

@@ -1,129 +1,112 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { apiClient } from '@/services/api/client';
-import InviteQRCode from '@/features/trip/InviteQRCode';
-import type { AuthStackParamList } from '@/app/navigation/AuthStack';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, AppState, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DatabaseProvider } from '@nozbe/watermelondb/react';
+import type { Database } from '@nozbe/watermelondb';
+import { createDatabase } from '@/db/database';
+import { SyncManager } from '@/sync/SyncManager';
+import { SyncProvider } from '@/sync/SyncContext';
+import { AccountProvider } from '@/app/AccountContext';
+import { TripProvider } from '@/app/TripContext';
+import SessionGuard from '@/app/SessionGuard';
+import RootNavigator from '@/app/navigation/RootNavigator';
 
-interface TripCreatedPayload {
-  id: string;
-  inviteCode: string;
-  name?: string;
-  defaultCurrency: string;
+/**
+ * The actual app root. This file previously contained a stray copy of
+ * CreateTripScreen's code instead of bootstrapping anything - which meant
+ * the app booted straight into a raw "create trip" form with no session,
+ * no providers, and no navigation. RootNavigator, TripStack, MyTripsScreen,
+ * AccountAuthScreen and SessionGuard all existed and were fully wired to
+ * each other, just never mounted from here.
+ *
+ * Two more root-level gaps surfaced once real screens became reachable:
+ * MyTripsScreen and ChecklistContainer call useDatabase() (from
+ * @nozbe/watermelondb/react), and ChecklistContainer/EmergencyBeacon/
+ * ItineraryContainer all call useSync() (from sync/SyncContext) - both
+ * hooks throw if their provider was never mounted, and neither provider
+ * existed anywhere in the codebase. This mounts both, alongside the
+ * providers above.
+ *
+ * Provider order: SessionGuard bridges AccountContext -> TripContext
+ * (clears the trip on logout - see its own comment), so it sits inside
+ * both. Database and sync sit outermost since Account/Trip state doesn't
+ * depend on them, but screens further down the tree depend on all four.
+ *
+ * GestureHandlerRootView wraps everything because ItineraryScreen's
+ * drag-to-reorder (ITIN-01) uses react-native-gesture-handler's
+ * PanGestureHandler - without this wrapper gesture recognition silently
+ * fails to attach on Android.
+ */
+
+// SyncManager's own doc comment calls for three triggers: network
+// reconnect, app foreground, and a periodic timer while the app is open.
+// This wires up the latter two using only APIs already in the dependency
+// tree (React Native's own AppState). Network-reconnect needs
+// @react-native-community/netinfo, which isn't a project dependency yet -
+// left as a follow-up rather than silently adding a new native module.
+const FOREGROUND_SYNC_INTERVAL_MS = 60_000;
+
+function useSyncTriggers(syncManager: SyncManager | null) {
+  useEffect(() => {
+    if (!syncManager) return undefined;
+
+    syncManager.syncNow();
+
+    const interval = setInterval(() => {
+      syncManager.syncNow();
+    }, FOREGROUND_SYNC_INTERVAL_MS);
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        syncManager.syncNow();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [syncManager]);
 }
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'CreateTrip'> & {
-  onCreated: (trip: TripCreatedPayload) => void;
-};
+export default function App() {
+  const [database, setDatabase] = useState<Database | null>(null);
+  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
 
-// FIN-02: "Trip admin sets 1 base currency at trip creation... All entries,
-// Kitty pools, and calculations run strictly in this currency." Chosen from
-// the spec's own example currencies (USD, EUR, PHP) plus two other common
-// ones - not an exhaustive ISO 4217 list, but easy to extend later.
-const CURRENCIES = ['USD', 'EUR', 'PHP', 'GBP', 'JPY'];
+  useEffect(() => {
+    let cancelled = false;
+    createDatabase().then(db => {
+      if (cancelled) return;
+      setDatabase(db);
+      setSyncManager(new SyncManager(db));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-/** TRIP-01: create a trip; server returns a 6-character invite code + a scannable QR payload. */
-export default function CreateTripScreen({ navigation, onCreated }: Props) {
-  const [name, setName] = useState('');
-  const [currency, setCurrency] = useState('USD');
-  const [createdTrip, setCreatedTrip] = useState<TripCreatedPayload | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  useSyncTriggers(syncManager);
 
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      Alert.alert('Name required', 'Give your trip a name first.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const trip = await apiClient.post<TripCreatedPayload>('/api/v1/trips', {
-        name: name.trim(),
-        defaultCurrency: currency,
-      });
-      setCreatedTrip(trip);
-    } catch (err) {
-      // Previously uncaught here - matches the same unhandled-promise-rejection
-      // pattern that crashed MapScreen before it got a catch block.
-      console.warn('Failed to create trip', err);
-      Alert.alert("Couldn't create trip", 'Check your connection and try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (createdTrip) {
+  if (!database || !syncManager) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.title}>Trip created</Text>
-        <Text style={styles.label}>Share this with your group to join.</Text>
-        <InviteQRCode tripId={createdTrip.id} inviteCode={createdTrip.inviteCode} />
-        <Text style={styles.code}>{createdTrip.inviteCode}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => onCreated(createdTrip)}>
-          <Text style={styles.buttonText}>Continue</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.label}>Trip name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Baguio Weekend" />
-
-      <Text style={styles.label}>Currency</Text>
-      <View style={styles.currencyRow}>
-        {CURRENCIES.map(code => (
-          <TouchableOpacity
-            key={code}
-            style={[styles.currencyChip, currency === code && styles.currencyChipActive]}
-            onPress={() => setCurrency(code)}
-          >
-            <Text style={[styles.currencyChipText, currency === code && styles.currencyChipTextActive]}>{code}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <Text style={styles.currencyHint}>All expenses and the shared kitty will run in this currency.</Text>
-
-      <TouchableOpacity style={styles.button} onPress={handleCreate} disabled={submitting}>
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Create Trip</Text>}
-      </TouchableOpacity>
-
-      <View style={styles.dividerRow}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>or join a trip</Text>
-        <View style={styles.dividerLine} />
-      </View>
-
-      <View style={styles.joinRow}>
-        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('ScanQR')}>
-          <Text style={styles.joinButtonText}>Scan QR</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('JoinTrip', undefined)}>
-          <Text style={styles.joinButtonText}>Enter Code</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <DatabaseProvider database={database}>
+        <SyncProvider manager={syncManager}>
+          <AccountProvider>
+            <TripProvider>
+              <SessionGuard />
+              <RootNavigator />
+            </TripProvider>
+          </AccountProvider>
+        </SyncProvider>
+      </DatabaseProvider>
+    </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4, marginBottom: 20 },
-  currencyRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  currencyChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#ddd' },
-  currencyChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
-  currencyChipText: { fontSize: 13, fontWeight: '600', color: '#555' },
-  currencyChipTextActive: { color: '#fff' },
-  currencyHint: { fontSize: 11, color: '#888', marginTop: 8, marginBottom: 20 },
-  code: { fontSize: 20, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: 20 },
-  button: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 16 },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: '#ddd' },
-  dividerText: { marginHorizontal: 10, fontSize: 12, color: '#888' },
-  joinRow: { flexDirection: 'row', gap: 10 },
-  joinButton: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 14, alignItems: 'center' },
-  joinButtonText: { fontWeight: '600', color: '#2f6fed' },
-});

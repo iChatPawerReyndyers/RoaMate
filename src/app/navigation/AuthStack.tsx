@@ -8,7 +8,7 @@ import { useTrip } from '@/app/TripContext';
 
 export type AuthStackParamList = {
   CreateTrip: undefined;
-  JoinTrip: { inviteCode?: string } | undefined;
+  JoinTrip: { inviteCode?: string; inviteSecret?: string } | undefined;
   ScanQR: undefined;
 };
 

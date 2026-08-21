@@ -19,11 +19,6 @@ prepare_react_native_project!
 # `pod install` run - not guessed.)
 use_modular_headers!
 
-# @rnmapbox/maps: use the real Mapbox SDK, not the MapLibre fallback.
-# Downloading its pods requires an authenticated ~/.netrc entry - see
-# docs/mapbox-setup.md. This line itself carries no secret.
-$RNMapboxMapsImpl = 'mapbox'
-
 # GEO-02/03: @react-native-firebase's documented fix for Swift AppDelegate
 # builds failing with "No such module 'FirebaseCore'". Without this, the
 # project's default static linking (see USE_FRAMEWORKS below - unset by
@@ -31,7 +26,7 @@ $RNMapboxMapsImpl = 'mapbox'
 # to find. This makes RNFirebase's own podspecs build their Firebase
 # dependencies with modular headers even as static libraries, which is
 # narrower than switching the whole project to use_frameworks! (avoids
-# potentially affecting how Mapbox/WatermelonDB's pods link).
+# potentially affecting how MapLibre/WatermelonDB's pods link).
 $RNFirebaseAsStaticFramework = true
 
 # RNFirebase 26.x defaults to resolving the actual Firebase SDK via Swift
@@ -76,5 +71,14 @@ target 'RoaMate' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Required by @maplibre/maplibre-react-native's own install docs -
+    # without this, the MapLibre.xcframework isn't linked into the build
+    # and every file that #imports <MapLibre/MapLibre.h> (MLRNMapView,
+    # MLRNCamera, etc.) fails with "file not found". $MLRN is defined by
+    # MapLibreReactNative.podspec/its prelude, autoloaded via the
+    # `pod 'MapLibreReactNative'` autolinking entry above - no separate
+    # require needed here.
+    $MLRN.post_install(installer)
   end
 end

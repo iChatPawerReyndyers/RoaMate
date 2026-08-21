@@ -8,6 +8,7 @@ import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 interface TripCreatedPayload {
   id: string;
   inviteCode: string;
+  inviteSecret: string;
   name?: string;
   defaultCurrency: string;
 }
@@ -56,7 +57,7 @@ export default function CreateTripScreen({ navigation, onCreated }: Props) {
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Trip created</Text>
         <Text style={styles.label}>Share this with your group to join.</Text>
-        <InviteQRCode tripId={createdTrip.id} inviteCode={createdTrip.inviteCode} />
+        <InviteQRCode tripId={createdTrip.id} inviteCode={createdTrip.inviteCode} inviteSecret={createdTrip.inviteSecret} />
         <Text style={styles.code}>{createdTrip.inviteCode}</Text>
         <TouchableOpacity style={styles.button} onPress={() => onCreated(createdTrip)}>
           <Text style={styles.buttonText}>Continue</Text>

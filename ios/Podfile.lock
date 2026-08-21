@@ -57,14 +57,28 @@ PODS:
   - hermes-engine (250829098.0.16):
     - hermes-engine/Pre-built (= 250829098.0.16)
   - hermes-engine/Pre-built (250829098.0.16)
-  - MapboxCommon (24.23.1):
-    - Turf (= 4.0.0)
-  - MapboxCoreMaps (11.23.1):
-    - MapboxCommon (= 24.23.1)
-  - MapboxMaps (11.23.1):
-    - MapboxCommon (= 24.23.1)
-    - MapboxCoreMaps (= 11.23.1)
-    - Turf (= 4.0.0)
+  - MapLibreReactNative (11.3.6):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - MMKVCore (2.4.0)
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
@@ -1565,6 +1579,28 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-netinfo (11.5.2):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-safe-area-context (5.9.0):
     - hermes-engine
     - RCTRequired
@@ -2102,6 +2138,8 @@ PODS:
     - ReactNativeDependencies
     - RNFBApp
     - Yoga
+  - RNFS (2.20.0):
+    - React-Core
   - RNGestureHandler (3.2.1):
     - hermes-engine
     - RCTRequired
@@ -2146,33 +2184,6 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - rnmapbox-maps (10.3.5):
-    - MapboxMaps (~> 11.23.1)
-    - React
-    - React-Core
-    - rnmapbox-maps/DynamicLibrary (= 10.3.5)
-    - Turf
-  - rnmapbox-maps/DynamicLibrary (10.3.5):
-    - hermes-engine
-    - MapboxMaps (~> 11.23.1)
-    - RCTRequired
-    - RCTTypeSafety
-    - React
-    - React-Core
-    - React-Core-prebuilt
-    - React-featureflags
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - Turf
-    - Yoga
   - RNScreens (4.27.0):
     - hermes-engine
     - RCTRequired
@@ -2212,6 +2223,28 @@ PODS:
     - React-NativeModulesApple
     - React-RCTFabric
     - React-RCTImage
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - RNShare (12.3.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
     - React-renderercss
     - React-rendererdebug
     - React-utils
@@ -2267,7 +2300,6 @@ PODS:
     - Yoga
   - simdjson (3.9.4)
   - TSBackgroundFetch (4.1.1)
-  - Turf (4.0.0)
   - VisionCamera (4.7.2):
     - VisionCamera/Core (= 4.7.2)
     - VisionCamera/React (= 4.7.2)
@@ -2282,6 +2314,7 @@ PODS:
 DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - "MapLibreReactNative (from `../node_modules/@maplibre/maplibre-react-native`)"
   - NitroMmkv (from `../node_modules/react-native-mmkv`)
   - NitroModules (from `../node_modules/react-native-nitro-modules`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -2323,6 +2356,7 @@ DEPENDENCIES:
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - React-mutationobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
   - "react-native-geolocation (from `../node_modules/@react-native-community/geolocation`)"
+  - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2362,10 +2396,11 @@ DEPENDENCIES:
   - RNBackgroundFetch (from `../node_modules/react-native-background-fetch`)
   - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
   - "RNFBMessaging (from `../node_modules/@react-native-firebase/messaging`)"
+  - RNFS (from `../node_modules/react-native-fs`)
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
-  - "rnmapbox-maps (from `../node_modules/@rnmapbox/maps`)"
   - RNScreens (from `../node_modules/react-native-screens`)
+  - RNShare (from `../node_modules/react-native-share`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - "simdjson (from `../node_modules/@nozbe/simdjson`)"
   - VisionCamera (from `../node_modules/react-native-vision-camera`)
@@ -2382,14 +2417,10 @@ SPEC REPOS:
     - FirebaseMessaging
     - GoogleDataTransport
     - GoogleUtilities
-    - MapboxCommon
-    - MapboxCoreMaps
-    - MapboxMaps
     - MMKVCore
     - nanopb
     - PromisesObjC
     - TSBackgroundFetch
-    - Turf
 
 EXTERNAL SOURCES:
   FBLazyVector:
@@ -2397,6 +2428,8 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.16
+  MapLibreReactNative:
+    :path: "../node_modules/@maplibre/maplibre-react-native"
   NitroMmkv:
     :path: "../node_modules/react-native-mmkv"
   NitroModules:
@@ -2477,6 +2510,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
   react-native-geolocation:
     :path: "../node_modules/@react-native-community/geolocation"
+  react-native-netinfo:
+    :path: "../node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   React-NativeModulesApple:
@@ -2555,14 +2590,16 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-firebase/app"
   RNFBMessaging:
     :path: "../node_modules/@react-native-firebase/messaging"
+  RNFS:
+    :path: "../node_modules/react-native-fs"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNKeychain:
     :path: "../node_modules/react-native-keychain"
-  rnmapbox-maps:
-    :path: "../node_modules/@rnmapbox/maps"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  RNShare:
+    :path: "../node_modules/react-native-share"
   RNSVG:
     :path: "../node_modules/react-native-svg"
   simdjson:
@@ -2585,9 +2622,7 @@ SPEC CHECKSUMS:
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
   hermes-engine: 6de954af36bd032dd0d03c7590834ea815f25f6e
-  MapboxCommon: d006256c4643860a7b3046af45d1671569b6c5ac
-  MapboxCoreMaps: de1a4461d0ab5d65d907f06e8d82fdbe06bb3213
-  MapboxMaps: 22340ae0e0d47b2e4761019b1d6c569ab04e088d
+  MapLibreReactNative: 9f1f16d5f5f522309ad1f2afc483a34cfc56fe6e
   MMKVCore: 3d16ce9f7d411e135020915fde98a056859a1efa
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   NitroMmkv: 85a251e15c39d7c95fe58cf40786fa126b8d143c
@@ -2631,6 +2666,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: f413ee411341fb3c34d20e85e9f6f524921fab15
   React-mutationobservernativemodule: 58f6d2adf7d98e72b241608dfa2ddce414d2a4e7
   react-native-geolocation: c41d1ad8e832fa800b4e457c721e348bcc5aa147
+  react-native-netinfo: 4319d381f35bc11b53dafebd5cd99c04c66a9fb4
   react-native-safe-area-context: 30934ff38025480021a6956a3eb8799f18ff835a
   React-NativeModulesApple: 167e532fb9bae30f3c66636b8ee0092bab263667
   React-networking: 89f6b69755a3176f30e56ba1ba8e214b1518ecfb
@@ -2670,18 +2706,18 @@ SPEC CHECKSUMS:
   RNBackgroundFetch: 61beeb139b83290dd6e93185261404b3490f5564
   RNFBApp: 814948afe57926b79916537df2a8a5f3d6f66a68
   RNFBMessaging: f525e72963da581f76f17c1924af6c20836c5e00
+  RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNGestureHandler: 08d1f8306f7fa1173043306c4ebced0534154ef5
   RNKeychain: 6778b35b5bd067c322f8479526ac09b1d61f31d0
-  rnmapbox-maps: 2898fe0a478c26be588ffed831e289c244738562
   RNScreens: de068bbd7d91b820fedac25c597d4b14830de74b
+  RNShare: 7344a3a7d4e5df58c356ad0f79e4a3ef1325c635
   RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
   simdjson: 7bb9e33d87737cec966e7b427773c67baa4458fe
   TSBackgroundFetch: 18918b6449a1e3f01eb0f5b44d6d79ce6160a5a5
-  Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   VisionCamera: 30b358b807324c692064f78385e9a732ce1bebfe
   WatermelonDB: 75e467adbaf2cb2809780fb3eda7ce4964e11778
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b
 
-PODFILE CHECKSUM: e156d75339dd4bd030ce286011d2a7fa42baf712
+PODFILE CHECKSUM: cb1b1bb606036689fc8617c9a4da34f69c7684ad
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

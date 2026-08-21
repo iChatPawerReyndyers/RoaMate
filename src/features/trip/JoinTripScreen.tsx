@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient, ApiError } from '@/services/api/client';
+import { useAccount } from '@/app/AccountContext';
 import type { AuthStackParamList } from '@/app/navigation/AuthStack';
 
 interface TripJoinedPayload {
@@ -20,11 +21,25 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'JoinTrip'> & {
  * prefilled from ScanQRScreen's route param. A scanned code still lands
  * here rather than auto-submitting, so the person can double check (or
  * correct, if the QR was for the wrong trip) before actually joining.
+ *
+ * inviteSecret, when present, came from the QR payload and travels with
+ * this screen only via route params - it's never rendered or editable, so
+ * editing the invite code by hand (e.g. to fix a scan) correctly drops it
+ * and falls back to a normal code-only join.
+ *
+ * "Your name" defaults to the logged-in account's username rather than
+ * starting blank - this screen is only ever reachable after login (see
+ * RootNavigator), so that username is always available. Still a plain
+ * editable field, not locked to it: a per-trip nickname is a reasonable
+ * thing to want (e.g. a family trip where "Mom" reads better than an
+ * account username).
  */
 export default function JoinTripScreen({ route, onJoined }: Props) {
+  const { account } = useAccount();
   const [code, setCode] = useState(route.params?.inviteCode ?? '');
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(account?.username || '');
   const [submitting, setSubmitting] = useState(false);
+  const inviteSecret = route.params?.inviteSecret;
 
   const handleJoin = async () => {
     if (!code.trim() || !displayName.trim()) {
@@ -36,6 +51,10 @@ export default function JoinTripScreen({ route, onJoined }: Props) {
       const joined = await apiClient.post<TripJoinedPayload>('/api/v1/trips/join', {
         inviteCode: code.trim().toUpperCase(),
         displayName: displayName.trim(),
+        // Only sent when the code still matches what the QR scan produced -
+        // if the person hand-edited the field, treat it as a fresh typed
+        // code instead of silently reusing a secret for a different code.
+        inviteSecret: code.trim().toUpperCase() === route.params?.inviteCode?.toUpperCase() ? inviteSecret : undefined,
       });
       onJoined(joined);
     } catch (err) {

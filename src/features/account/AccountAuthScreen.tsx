@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useAccount, UsernameTakenError, InvalidCredentialsError } from '@/app/AccountContext';
-import { NetworkUnavailableError } from '@/services/api/client';
+import { NetworkUnavailableError, TEST_MODE } from '@/services/api/client';
 
 type Mode = 'signup' | 'login';
 
@@ -29,23 +29,36 @@ export default function AccountAuthScreen() {
   }
 
   async function handleSubmit() {
-    const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
-      setMessage({ text: 'Enter a username', tone: 'error' });
-      return;
-    }
-    if (password.length < 8) {
-      setMessage({ text: 'Password must be at least 8 characters', tone: 'error' });
-      return;
+    let trimmedUsername = username.trim();
+    let effectivePassword = password;
+
+    if (TEST_MODE) {
+      // Testing on-device with no backend deployed (see mockData.ts) -
+      // nothing here actually authenticates against a real server, so
+      // requiring a well-formed username/password is friction with no
+      // purpose. Falls back to a throwaway identity only for whichever
+      // field is actually blank, so a partially-filled form still uses
+      // what was typed rather than discarding it.
+      trimmedUsername = trimmedUsername || 'tester';
+      effectivePassword = effectivePassword || 'test-mode-password';
+    } else {
+      if (!trimmedUsername) {
+        setMessage({ text: 'Enter a username', tone: 'error' });
+        return;
+      }
+      if (password.length < 8) {
+        setMessage({ text: 'Password must be at least 8 characters', tone: 'error' });
+        return;
+      }
     }
 
     setSubmitting(true);
     setMessage(null);
     try {
       if (mode === 'signup') {
-        await register(trimmedUsername, password);
+        await register(trimmedUsername, effectivePassword);
       } else {
-        await login(trimmedUsername, password);
+        await login(trimmedUsername, effectivePassword);
       }
       // On success AccountContext's `account` flips to non-null and
       // RootNavigator swaps this screen out - nothing further to do here.
@@ -75,6 +88,9 @@ export default function AccountAuthScreen() {
         <View style={styles.card}>
           <Text style={styles.title}>RoaMate</Text>
           <Text style={styles.tagline}>{mode === 'signup' ? 'Create an account to get started' : 'Log in to your account'}</Text>
+          {TEST_MODE && (
+            <Text style={styles.testModeBanner}>Test mode: tap {mode === 'signup' ? 'Create Account' : 'Log In'} to skip straight in</Text>
+          )}
 
           <View style={styles.tabRow}>
             <TouchableOpacity
@@ -136,6 +152,7 @@ const styles = StyleSheet.create({
   card: { marginHorizontal: 24, backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#d7e3ff' },
   title: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
   tagline: { fontSize: 13, color: '#666', textAlign: 'center', marginTop: 4, marginBottom: 20 },
+  testModeBanner: { fontSize: 11, color: '#b45309', backgroundColor: '#fffbeb', textAlign: 'center', paddingVertical: 6, borderRadius: 8, marginTop: -8, marginBottom: 16 },
   tabRow: { flexDirection: 'row', backgroundColor: '#f0f3fb', borderRadius: 10, padding: 3, marginBottom: 18 },
   tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   tabActive: { backgroundColor: '#fff' },

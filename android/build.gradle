@@ -23,21 +23,9 @@ buildscript {
 
 apply plugin: "com.facebook.react.rootproject"
 
-// Required for @rnmapbox/maps: the Android SDK binaries are hosted on a
-// private, authenticated Maven repo, separate from the public runtime
-// access token used inside the app. See docs/mapbox-setup.md - the actual
-// secret token must NEVER be committed here; it's read from your machine's
-// own ~/.gradle/gradle.properties (or the MAPBOX_DOWNLOADS_TOKEN env var),
-// not from this repo's android/gradle.properties.
-allprojects {
-    repositories {
-        maven {
-            url 'https://api.mapbox.com/downloads/v2/releases/maven'
-            authentication { basic(BasicAuthentication) }
-            credentials {
-                username = "mapbox"
-                password = project.findProperty('MAPBOX_DOWNLOADS_TOKEN') ?: System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: ""
-            }
-        }
-    }
-}
+// The old @rnmapbox/maps setup needed a private, authenticated Maven repo
+// here (Mapbox's Android SDK binaries require a secret downloads token,
+// separate from the public runtime access token) - see git history if you
+// ever need that block back. @maplibre/maplibre-react-native's Android SDK
+// publishes to Maven Central like any other public dependency, so no
+// credentialed repo or token is needed at all.

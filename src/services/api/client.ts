@@ -1,5 +1,35 @@
 import { Platform } from 'react-native';
 import { getAuthToken, setAuthToken, clearAuthToken } from '@/services/security/KeyManager';
+import { resolveMockResponse } from '@/services/api/mockData';
+
+/**
+ * Testing aid ONLY, for clicking through the whole app on a phone with no
+ * backend running - flip to false to go back to always hitting the real
+ * API.
+ */
+export const USE_MOCK_DATA_WHEN_OFFLINE = true;
+
+/**
+ * __DEV__ alone doesn't cover every "this is still just me testing"
+ * scenario: `./gradlew assembleRelease` (or an Xcode Release scheme)
+ * produces a release build - which sets __DEV__ to false - even when it's
+ * just going onto your own phone for testing, not to a real user via the
+ * Play Store/TestFlight/anything you'd hand someone else.
+ *
+ * This flag is what actually extends mock mode to that case, kept
+ * deliberately separate from __DEV__ itself so the two can be reasoned
+ * about independently: __DEV__ reflects the build type (debug vs
+ * release), this reflects intent (is this build going anywhere but my own
+ * test device).
+ *
+ * MUST be false before building a release that goes to anyone but you -
+ * true here means mock data AND the test-mode login bypass
+ * (AccountAuthScreen.tsx) both stay active even in a release build.
+ */
+export const ALLOW_TEST_MODE_IN_RELEASE_BUILDS = true;
+
+/** What every mock-mode check in the app should actually gate on - see the two flags above for what each half means. */
+export const TEST_MODE = (__DEV__ || ALLOW_TEST_MODE_IN_RELEASE_BUILDS) && USE_MOCK_DATA_WHEN_OFFLINE;
 
 /**
  * Android emulators run in their own virtual network - `localhost` from
@@ -62,7 +92,21 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
   unauthorizedHandler = handler;
 }
 
+// Testing without a deployed backend (physical device, no local server
+// reachable) means every request is guaranteed to fail - the question is
+// only how fast. iOS's "localhost" refuses instantly on a real device
+// (nothing's listening on the phone itself), but Android physical devices
+// have no equivalent to the emulator-only 10.0.2.2 alias, so that request
+// can sit unresolved for a long default OS timeout before rejecting.
+// Aborting after 5s keeps the mock-data fallback (see USE_MOCK_DATA_
+// WHEN_OFFLINE above) feeling instant on either platform instead of the
+// app appearing to hang.
+const FETCH_TIMEOUT_MS = 5000;
+
 async function doFetch(path: string, method: string, token: string | null, body?: unknown, extraHeaders?: Record<string, string>) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   try {
     return await fetch(`${BASE_URL}${path}`, {
       method,
@@ -72,11 +116,16 @@ async function doFetch(path: string, method: string, token: string | null, body?
         ...extraHeaders,
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
   } catch (err) {
     // fetch() itself throwing (not a non-2xx response) means the request
-    // never reached the server - no connectivity, not a server-side error.
+    // never reached the server - no connectivity, no backend running, or
+    // (via the abort above) it just took too long to say either way. All
+    // of these mean the same thing to callers: treat it as unreachable.
     throw new NetworkUnavailableError(err);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -84,7 +133,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const isAuthPath = path.startsWith('/api/v1/auth');
   const token = isAuthPath ? null : await getAuthToken();
 
-  const response = await doFetch(path, method, token, body);
+  let response;
+  try {
+    response = await doFetch(path, method, token, body);
+  } catch (err) {
+    if (err instanceof NetworkUnavailableError && TEST_MODE) {
+      const mocked = resolveMockResponse(method, path, body);
+      if (mocked) {
+        console.warn(`[mock] backend unreachable, returning mock data for ${method} ${path}`);
+        return mocked.data as T;
+      }
+    }
+    throw err;
+  }
 
   if (response.status === 401 && !isAuthPath) {
     await clearAuthToken();

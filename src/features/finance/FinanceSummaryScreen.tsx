@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
+import { shareExport, ExportFormat } from '@/services/export/ExportShareService';
+import { cacheExpensesFromServer, getCachedLocalExpenses, ExpenseDto } from '@/db/repositories/expensesRepository';
+import { computeLocalSettlement } from './SettlementEngine';
 import { useTrip } from '@/app/TripContext';
 
 interface NetBalance {
@@ -32,42 +36,80 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
   const [summary, setSummary] = useState<SettlementSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exportStatus, setExportStatus] = useState<string>('');
+  const [offline, setOffline] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const [exportResult, setExportResult] = useState<{ ok: boolean; message: string } | null>(null);
   const navigation = useNavigation();
+  const database = useDatabase();
   const { currentTrip } = useTrip();
   const currency = currentTrip?.defaultCurrency ?? 'USD';
 
+  /**
+   * FIN-05: tries the live, fully-accurate settlement (server-computed
+   * suggested transfers included) first. On any network failure, falls
+   * back to SettlementEngine.computeLocalSettlement() over whatever was
+   * last cached by cacheExpensesFromServer - an instant, offline-capable
+   * balance view with no suggested transfers (that min-cash-flow step only
+   * runs server-side). If there's nothing cached yet either (e.g. this
+   * device has never loaded this trip's expenses online), surfaces the
+   * same error as before rather than a misleading empty balance list.
+   */
   const loadSummary = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setExportStatus('');
+    setExportResult(null);
+    setOffline(false);
 
     try {
-      const result = await apiClient.get<SettlementSummary>(`/api/v1/finance/trips/${tripId}/settlement`);
+      const [result, expenses] = await Promise.all([
+        apiClient.get<SettlementSummary>(`/api/v1/finance/trips/${tripId}/settlement`),
+        apiClient.get<ExpenseDto[]>(`/api/v1/finance/trips/${tripId}/expenses`),
+      ]);
       setSummary(result);
+      // Keep the offline cache warm for next time - doesn't block the UI.
+      cacheExpensesFromServer(database, tripId, expenses).catch(err =>
+        console.warn('Failed to refresh offline expense cache', err),
+      );
     } catch (err) {
-      console.warn('Failed to load settlement summary', err);
-      setError('Unable to load settlement summary at this time.');
+      console.warn('Failed to load settlement summary from server, trying offline cache', err);
+      try {
+        const cachedExpenses = await getCachedLocalExpenses(database, tripId);
+        if (cachedExpenses.length === 0) {
+          throw new Error('No cached expenses available offline');
+        }
+        setSummary({ tripId, balances: computeLocalSettlement(cachedExpenses), suggestedTransfers: [] });
+        setOffline(true);
+      } catch (fallbackErr) {
+        console.warn('No offline settlement data available either', fallbackErr);
+        setError('Unable to load settlement summary at this time.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
 
-  const handleExport = async (format: 'csv' | 'pdf') => {
-    setExportStatus(`Downloading ${format.toUpperCase()}...`);
+  const handleExport = async (format: ExportFormat) => {
+    setExportingFormat(format);
+    setExportResult(null);
     try {
       const buffer = await apiClient.download(`/api/v1/finance/trips/${tripId}/export/${format}`);
-      setExportStatus(
-        `Export ${format.toUpperCase()} ready, ${Math.round(buffer.byteLength / 1024)} KB received. ` +
-          'Use your OS file tools to save this report when a file writer is available.',
-      );
+      await shareExport(currentTrip?.name ?? 'trip', format, buffer);
+      setExportResult({
+        ok: true,
+        message: `Saved to trip-settlement.${format} · Share sheet opened`,
+      });
     } catch (err) {
       console.warn('Failed to export settlement', err);
-      setExportStatus(`Export failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      setExportResult({
+        ok: false,
+        message: `Couldn't export ${format.toUpperCase()}. Check your connection and try again.`,
+      });
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -77,6 +119,9 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
         <Text style={styles.header}>Trip Settlement</Text>
         {loading ? <Text style={styles.message}>Loading settlement...</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {!loading && offline && summary ? (
+          <Text style={styles.message}>Showing cached balances — you're offline, so this may be out of date.</Text>
+        ) : null}
         {summary ? (
           <>
             <View style={styles.card}>
@@ -90,7 +135,9 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
             </View>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Suggested Transfers</Text>
-              {summary.suggestedTransfers.length === 0 ? (
+              {offline ? (
+                <Text style={styles.note}>Suggested transfers aren't available offline — reconnect to see them.</Text>
+              ) : summary.suggestedTransfers.length === 0 ? (
                 <Text style={styles.note}>Everyone is already settled up.</Text>
               ) : (
                 summary.suggestedTransfers.map(transfer => (
@@ -105,14 +152,36 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
               <Text style={styles.kittyButtonSubtitle}>View contributions & log a deposit</Text>
             </TouchableOpacity>
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.exportButton} onPress={() => handleExport('csv')}>
-                <Text style={styles.exportButtonText}>Export CSV</Text>
+              <TouchableOpacity
+                style={styles.exportButton}
+                onPress={() => handleExport('pdf')}
+                disabled={exportingFormat !== null}
+              >
+                {exportingFormat === 'pdf' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.exportButtonText}>Share PDF</Text>
+                )}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.exportButton} onPress={() => handleExport('pdf')}>
-                <Text style={styles.exportButtonText}>Export PDF</Text>
+              <TouchableOpacity
+                style={styles.exportButton}
+                onPress={() => handleExport('csv')}
+                disabled={exportingFormat !== null}
+              >
+                {exportingFormat === 'csv' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.exportButtonText}>Share CSV</Text>
+                )}
               </TouchableOpacity>
             </View>
-            {exportStatus ? <Text style={styles.message}>{exportStatus}</Text> : null}
+            {exportResult ? (
+              <View style={[styles.exportBanner, exportResult.ok ? styles.exportBannerSuccess : styles.exportBannerError]}>
+                <Text style={exportResult.ok ? styles.exportBannerTextSuccess : styles.exportBannerTextError}>
+                  {exportResult.message}
+                </Text>
+              </View>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -139,4 +208,9 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   exportButton: { flex: 1, backgroundColor: '#2f6fed', borderRadius: 12, padding: 14, alignItems: 'center' },
   exportButtonText: { color: '#fff', fontWeight: '700' },
+  exportBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, borderRadius: 10 },
+  exportBannerSuccess: { backgroundColor: '#e6f4ea' },
+  exportBannerError: { backgroundColor: '#fdecea' },
+  exportBannerTextSuccess: { color: '#1e7e34', fontSize: 12 },
+  exportBannerTextError: { color: '#b00020', fontSize: 12 },
 });

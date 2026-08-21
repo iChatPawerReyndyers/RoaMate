@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Alert, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import { useTrip } from '@/app/TripContext';
+import { useSync } from '@/sync/SyncContext';
 import ExpenseEntryScreen from './ExpenseEntryScreen';
 import ConflictReviewDashboard from './ConflictReviewDashboard';
 import FinanceSummaryScreen from './FinanceSummaryScreen';
@@ -22,6 +23,7 @@ const SUB_VIEWS: { key: SubView; label: string }[] = [
 export default function ExpensesHubScreen({ tripId }: Props) {
   const [activeView, setActiveView] = useState<SubView>('add');
   const { currentTrip } = useTrip();
+  const syncManager = useSync();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -44,19 +46,29 @@ export default function ExpensesHubScreen({ tripId }: Props) {
           <ExpenseEntryScreen
             tripMembers={currentTrip?.members ?? []}
             onSubmit={async payload => {
+              const expensePayload = {
+                ...payload,
+                tripId,
+                createdByUserId: await getCurrentUserId(),
+                expenseDate: new Date().toISOString(),
+                category: null,
+              };
               try {
-                await apiClient.post('/api/v1/finance/expenses', {
-                  ...payload,
-                  tripId,
-                  createdByUserId: await getCurrentUserId(),
-                  expenseDate: new Date().toISOString(),
-                  category: null,
-                });
-                setActiveView('settlement');
+                await apiClient.post('/api/v1/finance/expenses', expensePayload);
               } catch (err) {
-                console.warn('Failed to submit expense', err);
-                Alert.alert("Couldn't save expense", 'Check your connection and try again.');
+                // FIN-01/03: same offline-queue fallback as TripStack's
+                // AddExpense route - previously this alerted and dropped
+                // the expense on any failure, including a plain offline
+                // one, instead of queueing it for the next sync.
+                console.warn('Failed to submit expense, queued for sync', err);
+                await syncManager.enqueueEvent({
+                  tripId,
+                  eventType: 'EXPENSE_CREATED',
+                  clientTimestamp: Date.now(),
+                  payloadJson: JSON.stringify(expensePayload),
+                });
               }
+              setActiveView('settlement');
             }}
           />
         ) : null}
