@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, SafeAreaView, StyleSheet, Switch, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Switch, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
 import { useTrip } from '@/app/TripContext';

@@ -26,6 +26,17 @@ export const Cents = {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
   },
 
+  /**
+   * FIN-05: plain numeric amount, no currency symbol or code. The Expenses
+   * tab intentionally doesn't display currency for now (single-currency
+   * trips only, per trip creation) - multi-currency display is a later
+   * decision, not yet implemented. Cents are still stored and computed
+   * exactly as before; this only affects what's rendered.
+   */
+  formatPlain(cents: Cents): string {
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
+  },
+
   add(a: Cents, b: Cents): Cents {
     return Cents.of(a + b);
   },

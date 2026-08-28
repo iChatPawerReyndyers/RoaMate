@@ -11,6 +11,7 @@ export interface TripMemberDto {
 export interface TripDto {
   id: string;
   name: string;
+  description?: string;
   startDate?: string;
   endDate?: string;
   inviteCode: string;
@@ -21,6 +22,7 @@ export interface TripDto {
 export interface CachedTrip {
   serverId: string;
   name: string;
+  description?: string;
   inviteCode: string;
   memberCount: number;
   defaultCurrency: string;

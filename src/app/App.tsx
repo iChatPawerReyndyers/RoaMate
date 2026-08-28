@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DatabaseProvider } from '@nozbe/watermelondb/react';
 import type { Database } from '@nozbe/watermelondb';
 import { createDatabase } from '@/db/database';
@@ -96,17 +97,19 @@ export default function App() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <DatabaseProvider database={database}>
-        <SyncProvider manager={syncManager}>
-          <AccountProvider>
-            <TripProvider>
-              <SessionGuard />
-              <RootNavigator />
-            </TripProvider>
-          </AccountProvider>
-        </SyncProvider>
-      </DatabaseProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <DatabaseProvider database={database}>
+          <SyncProvider manager={syncManager}>
+            <AccountProvider>
+              <TripProvider>
+                <SessionGuard />
+                <RootNavigator />
+              </TripProvider>
+            </AccountProvider>
+          </SyncProvider>
+        </DatabaseProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

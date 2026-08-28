@@ -12,6 +12,7 @@ export interface CurrentTrip {
   tripId: string;
   inviteCode: string;
   name?: string;
+  description?: string;
   defaultCurrency: string;
   members: TripMember[];
 }

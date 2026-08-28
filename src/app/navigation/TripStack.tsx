@@ -48,6 +48,7 @@ interface RemoteDestination {
   operatingHours?: string;
   targetBudgetCents?: number;
   attachmentUrls?: string;
+  priority?: 'REQUIRED' | 'OPTIONAL' | 'TENTATIVE';
 }
 
 const Stack = createNativeStackNavigator<TripStackParamList>();
@@ -168,6 +169,7 @@ export default function TripStack() {
                     targetBudgetDollars:
                       existing.targetBudgetCents != null ? String(existing.targetBudgetCents / 100) : '',
                     attachmentUrls: existing.attachmentUrls ? existing.attachmentUrls.split(',') : [],
+                    priority: existing.priority ?? 'REQUIRED',
                   });
                 }
               })

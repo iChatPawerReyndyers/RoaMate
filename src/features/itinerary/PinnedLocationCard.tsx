@@ -1,12 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '@/services/api/client';
+import type { DestinationPriority } from './ItineraryScreen';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import { neuColors, neuRadii } from '@/theme/neumorphic';
 
 interface LocationNote {
   id: string;
   authorUserId: string;
   body: string;
 }
+
+/** ITIN-03: badge copy + colors per priority - REQUIRED is the implicit default for stops pinned before this field existed. */
+const PRIORITY_BADGES: Record<DestinationPriority, { label: string; bg: string; text: string }> = {
+  REQUIRED: { label: 'Required', bg: '#fdecea', text: '#b00020' },
+  OPTIONAL: { label: 'Optional', bg: '#fff6e0', text: '#8a5a00' },
+  TENTATIVE: { label: 'Tentative', bg: '#f1f1f1', text: '#666' },
+};
 
 interface DestinationActivitySummary {
   totalDistanceMeters: number;
@@ -18,30 +30,36 @@ interface DestinationActivitySummary {
 interface Props {
   destinationId: string;
   name: string;
-  dayLabel?: string;
   lat?: number;
   lng?: number;
   attachmentUrls?: string;
+  priority?: DestinationPriority;
   onAddNote: () => void;
   onStartActivity: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
 }
 
 /**
- * ITIN-02 / section 7.2 mockup: the full pinned-stop card - coordinates,
- * per-author notes (first few, with a link through to the full notes
- * screen), rolled-up activity metrics (ACT-04), a "Start activity here"
- * entry point, and an attachments list.
+ * ITIN-02 / section 7.2 mockup: the pinned-stop card. Collapsed by default
+ * (name, coordinates, priority only) - tap the chevron to reveal notes,
+ * activity metrics, and attachments. The day it's assigned to is shown
+ * once as the section header above all of a day's cards (see
+ * ItineraryScreen's DaySection), so it isn't repeated per-card here.
  */
 export default function PinnedLocationCard({
   destinationId,
   name,
-  dayLabel,
   lat,
   lng,
   attachmentUrls,
+  priority = 'REQUIRED',
   onAddNote,
   onStartActivity,
+  onEdit,
+  onRemove,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState<LocationNote[]>([]);
   const [summary, setSummary] = useState<DestinationActivitySummary | null>(null);
 
@@ -72,84 +90,115 @@ export default function PinnedLocationCard({
   const hasMetrics = summary && summary.sessionCount > 0;
 
   return (
-    <View style={styles.card}>
-      {dayLabel ? <Text style={styles.dayLabel}>{dayLabel}</Text> : null}
-      <Text style={styles.name}>{name}</Text>
-      {lat !== undefined && lng !== undefined ? (
-        <Text style={styles.coordinates}>{lat.toFixed(4)}° N, {lng.toFixed(4)}° E</Text>
-      ) : null}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notes and tips</Text>
-        {notes.map(note => (
-          <View key={note.id} style={styles.note}>
-            <Text style={styles.noteBody}>{note.body}</Text>
-            <Text style={styles.noteAuthor}>{note.authorUserId}</Text>
-          </View>
-        ))}
-        <TouchableOpacity style={styles.smallButton} onPress={onAddNote}>
-          <Text style={styles.smallButtonText}>+ Add note</Text>
-        </TouchableOpacity>
-      </View>
-
-      {hasMetrics ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activity metrics</Text>
-          <View style={styles.metricsRow}>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>{(summary!.totalDistanceMeters / 1000).toFixed(1)} km</Text>
-              <Text style={styles.metricLabel}>Distance</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>{Math.round(summary!.totalElevationGainMeters)} m</Text>
-              <Text style={styles.metricLabel}>Altitude gain</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>{summary!.totalSteps.toLocaleString()}</Text>
-              <Text style={styles.metricLabel}>Steps</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.startButton} onPress={onStartActivity}>
-            <Text style={styles.startButtonText}>▶ Start activity here</Text>
+    <NeuCard size="md" style={styles.card}>
+      <View style={styles.headerRow}>
+        <View style={styles.nameFlex}>
+          <Text style={styles.name}>{name}</Text>
+          {lat !== undefined && lng !== undefined ? (
+            <Text style={styles.coordinates}>{lat.toFixed(4)}° N, {lng.toFixed(4)}° E</Text>
+          ) : null}
+        </View>
+        <View style={styles.iconActions}>
+          <TouchableOpacity onPress={onEdit} hitSlop={8}>
+            <NeumorphicView variant="raised" size="sm" radius={9} style={styles.iconButton}>
+              <Text style={styles.iconButtonText}>✎</Text>
+            </NeumorphicView>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onRemove} hitSlop={8}>
+            <NeumorphicView variant="raised" size="sm" radius={9} style={styles.iconButton}>
+              <Text style={[styles.iconButtonText, styles.iconButtonDanger]}>🗑</Text>
+            </NeumorphicView>
           </TouchableOpacity>
         </View>
-      ) : (
-        <TouchableOpacity style={[styles.section, styles.startButton]} onPress={onStartActivity}>
-          <Text style={styles.startButtonText}>▶ Start activity here</Text>
-        </TouchableOpacity>
-      )}
+      </View>
 
-      {attachments.length > 0 ? (
-        <TouchableOpacity
-          style={styles.section}
-          onPress={() => Linking.openURL(attachments[0]!).catch(err => console.warn('Failed to open attachment', err))}
-        >
-          <Text style={styles.attachmentsButtonText}>
-            📎 View attachments ({attachments.length})
+      <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(prev => !prev)}>
+        <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BADGES[priority].bg }]}>
+          <Text style={[styles.priorityBadgeText, { color: PRIORITY_BADGES[priority].text }]}>
+            {PRIORITY_BADGES[priority].label}
           </Text>
-        </TouchableOpacity>
+        </View>
+        <Text style={styles.chevron}>{expanded ? '▾' : '▸'}</Text>
+      </TouchableOpacity>
+
+      {expanded ? (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notes and tips</Text>
+            {notes.map(note => (
+              <View key={note.id} style={styles.note}>
+                <Text style={styles.noteBody}>{note.body}</Text>
+                <Text style={styles.noteAuthor}>{note.authorUserId}</Text>
+              </View>
+            ))}
+            <NeuButton label="+ Add note" variant="secondary" onPress={onAddNote} style={styles.smallButton} />
+          </View>
+
+          {hasMetrics ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Activity metrics</Text>
+              <View style={styles.metricsRow}>
+                <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.metric}>
+                  <Text style={styles.metricValue}>{(summary!.totalDistanceMeters / 1000).toFixed(1)} km</Text>
+                  <Text style={styles.metricLabel}>Distance</Text>
+                </NeumorphicView>
+                <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.metric}>
+                  <Text style={styles.metricValue}>{Math.round(summary!.totalElevationGainMeters)} m</Text>
+                  <Text style={styles.metricLabel}>Altitude gain</Text>
+                </NeumorphicView>
+                <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.metric}>
+                  <Text style={styles.metricValue}>{summary!.totalSteps.toLocaleString()}</Text>
+                  <Text style={styles.metricLabel}>Steps</Text>
+                </NeumorphicView>
+              </View>
+              <NeuButton label="▶ Start activity here" variant="primary" onPress={onStartActivity} style={styles.startButton} />
+            </View>
+          ) : (
+            <View style={styles.section}>
+              <NeuButton label="▶ Start activity here" variant="primary" onPress={onStartActivity} />
+            </View>
+          )}
+
+          {attachments.length > 0 ? (
+            <TouchableOpacity
+              style={styles.section}
+              onPress={() => Linking.openURL(attachments[0]!).catch(err => console.warn('Failed to open attachment', err))}
+            >
+              <Text style={styles.attachmentsButtonText}>
+                📎 View attachments ({attachments.length})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
       ) : null}
-    </View>
+    </NeuCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#f5f8ff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#e2e9ff', flex: 1 },
-  dayLabel: { fontSize: 12, color: '#2f6fed', fontWeight: '700', marginBottom: 2 },
-  name: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  coordinates: { fontSize: 12, color: '#888', marginBottom: 12 },
-  section: { borderTopWidth: 1, borderTopColor: '#e2e9ff', paddingTop: 10, marginTop: 10 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 8 },
+  card: { padding: 16, marginBottom: 12 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  nameFlex: { flex: 1 },
+  name: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary },
+  coordinates: { fontSize: 12, color: neuColors.textMuted, marginTop: 2 },
+  iconActions: { flexDirection: 'row', gap: 10 },
+  iconButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  iconButtonText: { fontSize: 14, color: neuColors.textPrimary },
+  iconButtonDanger: { color: neuColors.danger },
+  expandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  chevron: { fontSize: 14, color: neuColors.textMuted },
+  priorityBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  priorityBadgeText: { fontSize: 11, fontWeight: '700' },
+  section: { borderTopWidth: 1, borderTopColor: neuColors.shadowDark, paddingTop: 12, marginTop: 12 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: neuColors.textMuted, marginBottom: 8 },
   note: { marginBottom: 6 },
-  noteBody: { fontSize: 13, color: '#222' },
-  noteAuthor: { fontSize: 11, color: '#888', marginTop: 1 },
-  smallButton: { alignSelf: 'flex-start', backgroundColor: '#eef2ff', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginTop: 4 },
-  smallButtonText: { fontSize: 12, color: '#3b4ba0', fontWeight: '600' },
-  metricsRow: { flexDirection: 'row', gap: 8 },
-  metric: { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 10, alignItems: 'center' },
-  metricValue: { fontSize: 15, fontWeight: '700' },
-  metricLabel: { fontSize: 11, color: '#888', marginTop: 2 },
-  startButton: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 10, alignItems: 'center', marginTop: 10 },
-  startButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  attachmentsButtonText: { fontSize: 13, fontWeight: '600', color: '#3b4ba0', textAlign: 'center' },
+  noteBody: { fontSize: 13, color: neuColors.textPrimary },
+  noteAuthor: { fontSize: 11, color: neuColors.textMuted, marginTop: 1 },
+  smallButton: { alignSelf: 'flex-start', marginTop: 4 },
+  metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  metric: { flex: 1, padding: 10, alignItems: 'center' },
+  metricValue: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
+  metricLabel: { fontSize: 11, color: neuColors.textMuted, marginTop: 2 },
+  startButton: { marginTop: 0 },
+  attachmentsButtonText: { fontSize: 13, fontWeight: '600', color: neuColors.accent, textAlign: 'center' },
 });

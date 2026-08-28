@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
 import InviteQRCode from './InviteQRCode';
@@ -10,6 +11,7 @@ interface TripCreatedPayload {
   inviteCode: string;
   inviteSecret: string;
   name?: string;
+  description?: string;
   defaultCurrency: string;
 }
 
@@ -26,6 +28,7 @@ const CURRENCIES = ['USD', 'EUR', 'PHP', 'GBP', 'JPY'];
 /** TRIP-01: create a trip; server returns a 6-character invite code + a scannable QR payload. */
 export default function CreateTripScreen({ navigation, onCreated }: Props) {
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [createdTrip, setCreatedTrip] = useState<TripCreatedPayload | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -39,6 +42,7 @@ export default function CreateTripScreen({ navigation, onCreated }: Props) {
     try {
       const trip = await apiClient.post<TripCreatedPayload>('/api/v1/trips', {
         name: name.trim(),
+        description: description.trim() || undefined,
         defaultCurrency: currency,
       });
       setCreatedTrip(trip);
@@ -70,6 +74,15 @@ export default function CreateTripScreen({ navigation, onCreated }: Props) {
     <SafeAreaView style={styles.container}>
       <Text style={styles.label}>Trip name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Baguio Weekend" />
+
+      <Text style={styles.label}>Description (optional)</Text>
+      <TextInput
+        style={[styles.input, styles.descriptionInput]}
+        value={description}
+        onChangeText={setDescription}
+        placeholder="What's this trip about?"
+        multiline
+      />
 
       <Text style={styles.label}>Currency</Text>
       <View style={styles.currencyRow}>
@@ -112,6 +125,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
   label: { fontSize: 13, fontWeight: '600', color: '#555' },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4, marginBottom: 20 },
+  descriptionInput: { minHeight: 70, textAlignVertical: 'top' },
   currencyRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   currencyChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#ddd' },
   currencyChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },

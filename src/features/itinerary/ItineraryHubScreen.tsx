@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapScreen from '@/features/geo/MapScreen';
 import ActivityDashboardScreen from '@/features/activity/ActivityDashboardScreen';
 import ItineraryContainer from './ItineraryContainer';

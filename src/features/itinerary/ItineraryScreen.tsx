@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   PanGestureHandler,
   PanGestureHandlerGestureEvent,
@@ -7,6 +8,10 @@ import {
   State,
 } from 'react-native-gesture-handler';
 import PinnedLocationCard from './PinnedLocationCard';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors } from '@/theme/neumorphic';
+
+export type DestinationPriority = 'REQUIRED' | 'OPTIONAL' | 'TENTATIVE';
 
 export interface Destination {
   id: string;
@@ -16,36 +21,36 @@ export interface Destination {
   lat?: number;
   lng?: number;
   attachmentUrls?: string;
+  priority?: DestinationPriority;
 }
 
 interface Props {
   destinations: Destination[];
-  isAdmin: boolean;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
   onAddDestination: () => void;
   onEditDestination: (destinationId: string) => void;
+  onRemoveDestination: (destinationId: string, destinationName: string) => void;
 }
 
 const ROW_HEIGHT = 210; // approximate rendered height of one PinnedLocationCard row, used to convert drag distance into index deltas
 
 /**
  * ITIN-01: per-day itinerary list with drag-to-reorder (react-native-gesture-handler).
- * TRIP-02: "Admin can edit core itineraries" - adding, reordering and editing
- * destinations is gated on isAdmin; everything else in the app (expenses,
- * notes, activities, checklists, conflict review, privacy toggles) is
- * intentionally left open to all participants per spec, so this is the only
- * screen in the app with a role gate.
+ * Adding, editing, reordering, and removing destinations is open to any
+ * trip member - trip membership itself is the gate (see requireMember in
+ * ItineraryController.java), not a separate admin role, since you can't
+ * reach this screen at all without already being a member of the trip.
  */
 export default function ItineraryScreen({
   destinations,
-  isAdmin,
   onReorder,
   onOpenNotes,
   onStartActivity,
   onAddDestination,
   onEditDestination,
+  onRemoveDestination,
 }: Props) {
   const byDay = useMemo(() => groupByDay(destinations), [destinations]);
 
@@ -74,27 +79,24 @@ export default function ItineraryScreen({
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {isAdmin ? (
-          <TouchableOpacity style={styles.addButton} onPress={onAddDestination}>
-            <Text style={styles.addButtonText}>+ Add destination</Text>
-          </TouchableOpacity>
-        ) : (
-          <Text style={styles.readOnlyHint}>Only trip admins can add or reorder destinations.</Text>
-        )}
-
         {Object.entries(byDay).map(([day, stops]) => (
           <DaySection
             key={day}
             day={day}
             stops={stops}
-            isAdmin={isAdmin}
             onReorder={orderedIds => handleDayReorder(day, orderedIds)}
             onOpenNotes={onOpenNotes}
             onStartActivity={onStartActivity}
             onEditDestination={onEditDestination}
+            onRemoveDestination={onRemoveDestination}
           />
         ))}
       </ScrollView>
+      <TouchableOpacity style={styles.fabTouchable} onPress={onAddDestination} activeOpacity={0.85}>
+        <NeumorphicView variant="raised" size="fab" radius={28} backgroundColor={neuColors.accent} style={styles.fab}>
+          <Text style={styles.fabIcon}>+</Text>
+        </NeumorphicView>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -102,19 +104,19 @@ export default function ItineraryScreen({
 function DaySection({
   day,
   stops,
-  isAdmin,
   onReorder,
   onOpenNotes,
   onStartActivity,
   onEditDestination,
+  onRemoveDestination,
 }: {
   day: string;
   stops: Destination[];
-  isAdmin: boolean;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
   onEditDestination: (destinationId: string) => void;
+  onRemoveDestination: (destinationId: string, destinationName: string) => void;
 }) {
   const [order, setOrder] = useState(stops.map(s => s.id));
   const stopsById = useMemo(() => new Map(stops.map(s => [s.id, s])), [stops]);
@@ -140,34 +142,19 @@ function DaySection({
         const stop = stopsById.get(id);
         if (!stop) return null;
         const row = (
-          <View style={styles.itemRow}>
-            <PinnedLocationCard
-              destinationId={stop.id}
-              name={stop.name}
-              dayLabel={day}
-              lat={stop.lat}
-              lng={stop.lng}
-              attachmentUrls={stop.attachmentUrls}
-              onAddNote={() => onOpenNotes(stop.id, stop.name)}
-              onStartActivity={() => onStartActivity(stop.id, stop.name)}
-            />
-            {isAdmin && (
-              <TouchableOpacity style={styles.editButton} onPress={() => onEditDestination(stop.id)}>
-                <Text style={styles.editButtonText}>Edit</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <PinnedLocationCard
+            destinationId={stop.id}
+            name={stop.name}
+            lat={stop.lat}
+            lng={stop.lng}
+            attachmentUrls={stop.attachmentUrls}
+            priority={stop.priority}
+            onAddNote={() => onOpenNotes(stop.id, stop.name)}
+            onStartActivity={() => onStartActivity(stop.id, stop.name)}
+            onEdit={() => onEditDestination(stop.id)}
+            onRemove={() => onRemoveDestination(stop.id, stop.name)}
+          />
         );
-
-        // Participants get a plain, non-draggable row - drag-to-reorder is
-        // an itinerary edit, which is admin-only.
-        if (!isAdmin) {
-          return (
-            <View key={id} style={styles.readOnlyRow}>
-              {row}
-            </View>
-          );
-        }
 
         return (
           <DraggableRow key={id} index={index} lastIndex={order.length - 1} onDrop={moveBy => handleDrop(id, moveBy)}>
@@ -225,9 +212,6 @@ function DraggableRow({
           { transform: [{ translateY }] },
         ]}
       >
-        <View style={styles.dragHandle}>
-          <Text style={styles.dragHandleText}>⠿</Text>
-        </View>
         <View style={styles.draggableContent}>{children}</View>
       </Animated.View>
     </PanGestureHandler>
@@ -243,20 +227,14 @@ function groupByDay(destinations: Destination[]): Record<string, Destination[]> 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { paddingBottom: 24 },
-  addButton: { margin: 16, backgroundColor: '#2f6fed', borderRadius: 10, padding: 12, alignItems: 'center' },
-  addButtonText: { color: '#fff', fontWeight: '700' },
-  readOnlyHint: { marginHorizontal: 16, marginTop: 16, marginBottom: 4, fontSize: 12, color: '#888', fontStyle: 'italic' },
-  readOnlyRow: { marginBottom: 12, marginLeft: 28 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  scroll: { paddingBottom: 96 },
   daySection: { paddingHorizontal: 16, paddingTop: 8 },
-  dayHeader: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  dayHeader: { fontSize: 16, fontWeight: '700', marginBottom: 8, color: neuColors.textPrimary },
   draggableWrapper: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 12, zIndex: 1 },
   draggableActive: { zIndex: 10, elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
-  dragHandle: { width: 28, alignItems: 'center', justifyContent: 'center' },
-  dragHandleText: { fontSize: 18, color: '#aaa' },
   draggableContent: { flex: 1 },
-  itemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  editButton: { backgroundColor: '#dfe7ff', borderRadius: 10, padding: 10, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
-  editButtonText: { color: '#2f6fed', fontWeight: '700', fontSize: 12 },
+  fabTouchable: { position: 'absolute', right: 20, bottom: 24 },
+  fab: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  fabIcon: { color: neuColors.white, fontSize: 28, fontWeight: '300', marginTop: -2 },
 });

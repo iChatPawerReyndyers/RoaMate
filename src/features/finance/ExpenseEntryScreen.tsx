@@ -1,7 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View, StyleSheet, Switch } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import { resolveFillRemainingBalance, PaymentLine } from './FillRemainingBalance';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuToggle from '@/components/neumorphic/NeuToggle';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import { neuColors } from '@/theme/neumorphic';
 
 interface Member {
   userId: string;
@@ -113,7 +118,7 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     try {
       const resolved = resolveFillRemainingBalance(totalCents, includedLines);
       const paidCents = resolved.reduce((sum, l) => Cents.add(sum, l.amountCents), Cents.of(0));
-      return { status: 'balanced' as const, message: `Total paid ${Cents.format(paidCents)} / bill ${Cents.format(totalCents)} — balanced`, resolved };
+      return { status: 'balanced' as const, message: `Total paid ${Cents.formatPlain(paidCents)} / bill ${Cents.formatPlain(totalCents)} — balanced`, resolved };
     } catch (err: any) {
       return { status: 'error' as const, message: err.message as string };
     }
@@ -138,11 +143,10 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.label}>What was it for?</Text>
-        <TextInput style={styles.input} value={description} onChangeText={setDescription} placeholder="Dinner at the harbor" />
+        <NeuTextInput value={description} onChangeText={setDescription} placeholder="Dinner at the harbor" />
 
         <Text style={styles.label}>Total amount</Text>
-        <TextInput
-          style={styles.input}
+        <NeuTextInput
           value={totalDollars}
           onChangeText={setTotalDollars}
           keyboardType="decimal-pad"
@@ -152,13 +156,15 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
         <Text style={styles.sectionHeader}>Who paid? (Abono)</Text>
         {payerRows.map(row => (
           <View key={row.key} style={styles.payerRow}>
-            <TouchableOpacity style={styles.payerCheckboxLabel} onPress={() => toggleIncluded(row.key)}>
-              <Switch value={row.included} onValueChange={() => toggleIncluded(row.key)} />
-              <Text style={styles.payerLabel}>{row.label}</Text>
-            </TouchableOpacity>
+            <View style={styles.payerCheckboxLabel}>
+              <NeuToggle value={row.included} onValueChange={() => toggleIncluded(row.key)} />
+              <TouchableOpacity onPress={() => toggleIncluded(row.key)}>
+                <Text style={styles.payerLabel}>{row.label}</Text>
+              </TouchableOpacity>
+            </View>
             {row.included && (
               <View style={styles.payerAmountGroup}>
-                <TextInput
+                <NeuTextInput
                   style={styles.amountInput}
                   placeholder="fill remaining"
                   keyboardType="decimal-pad"
@@ -181,56 +187,55 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
 
         <View style={styles.splitHeaderRow}>
           <Text style={styles.splitHeaderText}>Split between</Text>
-          <TouchableOpacity style={styles.selectAllRow} onPress={toggleSelectAll}>
-            <Switch value={allSelected} onValueChange={toggleSelectAll} />
-            <Text style={styles.selectAllLabel}>Select all</Text>
-          </TouchableOpacity>
+          <View style={styles.selectAllRow}>
+            <NeuToggle value={allSelected} onValueChange={toggleSelectAll} />
+            <TouchableOpacity onPress={toggleSelectAll}>
+              <Text style={styles.selectAllLabel}>Select all</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {participantIds.size > 0 && (
           <Text style={styles.perPersonHint}>
-            {participantIds.size} member{participantIds.size === 1 ? '' : 's'} — {Cents.format(perPersonCents)} each
+            {participantIds.size} member{participantIds.size === 1 ? '' : 's'} — {Cents.formatPlain(perPersonCents)} each
           </Text>
         )}
         {tripMembers.map(m => (
           <View key={m.userId} style={styles.participantRow}>
-            <Text>{m.displayName}</Text>
-            <Switch value={participantIds.has(m.userId)} onValueChange={() => toggleParticipant(m.userId)} />
+            <Text style={styles.participantName}>{m.displayName}</Text>
+            <NeuToggle value={participantIds.has(m.userId)} onValueChange={() => toggleParticipant(m.userId)} />
           </View>
         ))}
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Save Expense</Text>
-        </TouchableOpacity>
+        <NeuButton label="Save Expense" onPress={handleSubmit} style={styles.submitButton} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: neuColors.background },
   scroll: { padding: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555', marginTop: 12 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4 },
-  sectionHeader: { fontSize: 15, fontWeight: '700', marginTop: 20, marginBottom: 8 },
-  payerRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
+  label: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary, marginTop: 12, marginBottom: 4 },
+  sectionHeader: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary, marginTop: 20, marginBottom: 8 },
+  payerRow: { paddingVertical: 8 },
   payerCheckboxLabel: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  payerLabel: { fontSize: 14 },
+  payerLabel: { fontSize: 14, color: neuColors.textPrimary },
   payerAmountGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, marginLeft: 52, marginBottom: 4 },
-  amountInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 6, width: 120, textAlign: 'right' },
-  fillRestButton: { color: '#3b4ba0', fontSize: 12, fontWeight: '600' },
+  amountInput: { width: 130 },
+  fillRestButton: { color: neuColors.accent, fontSize: 12, fontWeight: '600' },
   balanceBanner: { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 10, borderRadius: 8 },
-  balanceBannerOk: { backgroundColor: '#e6f4ea' },
-  balanceBannerError: { backgroundColor: '#fdecea' },
-  balanceBannerNeutral: { backgroundColor: '#f5f5f5' },
-  balanceTextOk: { color: '#1e7e34', fontSize: 12, fontWeight: '600' },
-  balanceTextError: { color: '#b00020', fontSize: 12, fontWeight: '600' },
-  balanceTextNeutral: { color: '#777', fontSize: 12 },
+  balanceBannerOk: { backgroundColor: '#DDF0E1' },
+  balanceBannerError: { backgroundColor: '#FBE3E1' },
+  balanceBannerNeutral: { backgroundColor: neuColors.surfaceInset },
+  balanceTextOk: { color: '#2E7D4F', fontSize: 12, fontWeight: '600' },
+  balanceTextError: { color: neuColors.danger, fontSize: 12, fontWeight: '600' },
+  balanceTextNeutral: { color: neuColors.textMuted, fontSize: 12 },
   splitHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
-  splitHeaderText: { fontSize: 15, fontWeight: '700' },
+  splitHeaderText: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
   selectAllRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  selectAllLabel: { fontSize: 13, fontWeight: '600' },
-  perPersonHint: { fontSize: 12, color: '#666', marginBottom: 8 },
+  selectAllLabel: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary },
+  perPersonHint: { fontSize: 12, color: neuColors.textMuted, marginBottom: 8 },
   participantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  submitButton: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 24, marginBottom: 40 },
-  submitButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  participantName: { color: neuColors.textPrimary },
+  submitButton: { marginTop: 24, marginBottom: 40 },
 });

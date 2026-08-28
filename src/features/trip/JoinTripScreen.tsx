@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient, ApiError } from '@/services/api/client';
 import { useAccount } from '@/app/AccountContext';
@@ -9,6 +10,7 @@ interface TripJoinedPayload {
   id: string;
   inviteCode: string;
   name?: string;
+  description?: string;
   defaultCurrency: string;
 }
 

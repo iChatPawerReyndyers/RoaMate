@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ItineraryHubScreen from '@/features/itinerary/ItineraryHubScreen';
 import ExpensesHubScreen from '@/features/finance/ExpensesHubScreen';
 import ChecklistContainer from '@/features/checklists/ChecklistContainer';
@@ -66,8 +67,13 @@ function SafetyIcon() {
 }
 
 function CustomTabBar({ state, navigation, onSafetyPress }: BottomTabBarProps & { onSafetyPress: () => void }) {
+  const insets = useSafeAreaInsets();
+  // Pad below the tab bar by whichever is larger: the device's actual bottom
+  // inset (Android gesture bar / iOS home indicator) or a minimum comfortable
+  // gap for classic 3-button nav / older devices where the inset is 0.
+  const bottomPadding = Math.max(insets.bottom, 12);
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { paddingBottom: bottomPadding }]}>
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const routeName = route.name as keyof TripTabsParamList;
@@ -117,7 +123,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#e2e2e2',
     backgroundColor: '#fff',
     paddingVertical: 8,
-    paddingBottom: 12,
   },
   tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
   tabLabel: { fontSize: 11, color: '#888' },

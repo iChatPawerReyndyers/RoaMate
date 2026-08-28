@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, FlatList, Alert } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, FlatList } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { apiClient, NetworkUnavailableError } from '@/services/api/client';
@@ -18,7 +19,7 @@ export default function MyTripsScreen() {
   const database = useDatabase();
   const navigation = useNavigation();
   const { setCurrentTrip } = useTrip();
-  const { account, logout } = useAccount();
+  const { account } = useAccount();
 
   const [trips, setTrips] = useState<CachedTrip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +36,7 @@ export default function MyTripsScreen() {
         serverTrips.map(trip => ({
           serverId: trip.id,
           name: trip.name,
+          description: trip.description,
           inviteCode: trip.inviteCode,
           memberCount: trip.members.length,
           defaultCurrency: trip.defaultCurrency,
@@ -65,7 +67,7 @@ export default function MyTripsScreen() {
   );
 
   const openTrip = async (trip: CachedTrip) => {
-    setCurrentTrip({ tripId: trip.serverId, inviteCode: trip.inviteCode, name: trip.name, defaultCurrency: trip.defaultCurrency });
+    setCurrentTrip({ tripId: trip.serverId, inviteCode: trip.inviteCode, name: trip.name, description: trip.description, defaultCurrency: trip.defaultCurrency });
     navigation.navigate('Trip' as never);
   };
 
@@ -80,19 +82,6 @@ export default function MyTripsScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <View style={styles.accountRow}>
-        <TouchableOpacity
-          onPress={() =>
-            Alert.alert('Log out?', 'You can log back in with your username and password.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Log out', style: 'destructive', onPress: () => logout() },
-            ])
-          }
-        >
-          <Text style={styles.logoutText}>Log out</Text>
-        </TouchableOpacity>
-      </View>
-
       {isOffline ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>You’re offline - showing your saved trips.</Text>
@@ -134,8 +123,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  accountRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
-  logoutText: { fontSize: 12, color: '#b00020', fontWeight: '600' },
   title: { fontSize: 22, fontWeight: '700' },
   addButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2f6fed', alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: -2 },

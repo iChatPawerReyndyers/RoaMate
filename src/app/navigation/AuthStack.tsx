@@ -25,7 +25,7 @@ export default function AuthStack() {
           <CreateTripScreen
             {...props}
             onCreated={trip => {
-              setCurrentTrip({ tripId: trip.id, inviteCode: trip.inviteCode, name: trip.name, defaultCurrency: trip.defaultCurrency });
+              setCurrentTrip({ tripId: trip.id, inviteCode: trip.inviteCode, name: trip.name, description: trip.description, defaultCurrency: trip.defaultCurrency });
               navigation.navigate('Trip' as never);
             }}
           />
@@ -36,7 +36,7 @@ export default function AuthStack() {
           <JoinTripScreen
             {...props}
             onJoined={trip => {
-              setCurrentTrip({ tripId: trip.id, inviteCode: trip.inviteCode, name: trip.name, defaultCurrency: trip.defaultCurrency });
+              setCurrentTrip({ tripId: trip.id, inviteCode: trip.inviteCode, name: trip.name, description: trip.description, defaultCurrency: trip.defaultCurrency });
               navigation.navigate('Trip' as never);
             }}
           />

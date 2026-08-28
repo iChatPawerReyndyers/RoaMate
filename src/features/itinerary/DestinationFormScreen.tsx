@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
+import type { DestinationPriority } from './ItineraryScreen';
 
 export interface DestinationFormValues {
   name: string;
@@ -8,7 +10,14 @@ export interface DestinationFormValues {
   operatingHours: string;
   targetBudgetDollars: string;
   attachmentUrls: string[];
+  priority: DestinationPriority;
 }
+
+const PRIORITY_OPTIONS: { key: DestinationPriority; label: string }[] = [
+  { key: 'REQUIRED', label: 'Required' },
+  { key: 'OPTIONAL', label: 'Optional' },
+  { key: 'TENTATIVE', label: 'Tentative' },
+];
 
 interface Props {
   initialValues?: Partial<DestinationFormValues>;
@@ -18,6 +27,7 @@ interface Props {
     operatingHours?: string;
     targetBudgetCents?: number;
     attachmentUrls?: string;
+    priority: DestinationPriority;
   }) => void;
 }
 
@@ -36,6 +46,7 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
   const [targetBudgetDollars, setTargetBudgetDollars] = useState(initialValues?.targetBudgetDollars ?? '');
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>(initialValues?.attachmentUrls ?? []);
   const [newAttachmentUrl, setNewAttachmentUrl] = useState('');
+  const [priority, setPriority] = useState<DestinationPriority>(initialValues?.priority ?? 'REQUIRED');
 
   const addAttachment = () => {
     const trimmed = newAttachmentUrl.trim();
@@ -62,6 +73,7 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
       operatingHours: operatingHours.trim() || undefined,
       targetBudgetCents,
       attachmentUrls: attachmentUrls.length > 0 ? attachmentUrls.join(',') : undefined,
+      priority,
     });
   };
 
@@ -81,6 +93,24 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
           onChangeText={setOperatingHours}
           placeholder="e.g. 8:00 AM - 5:00 PM"
         />
+
+        <Text style={styles.label}>Priority</Text>
+        <View style={styles.priorityRow}>
+          {PRIORITY_OPTIONS.map(option => {
+            const selected = priority === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.priorityOption, selected && styles.priorityOptionSelected]}
+                onPress={() => setPriority(option.key)}
+              >
+                <Text style={[styles.priorityOptionText, selected && styles.priorityOptionTextSelected]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <Text style={styles.label}>Target budget</Text>
         <TextInput
@@ -127,6 +157,11 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: '#555', marginTop: 14 },
   hint: { fontSize: 11, color: '#888', marginTop: 2, marginBottom: 6 },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4 },
+  priorityRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  priorityOption: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
+  priorityOptionSelected: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
+  priorityOptionText: { fontSize: 12, fontWeight: '600', color: '#555' },
+  priorityOptionTextSelected: { color: '#fff' },
   attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   attachmentInput: { flex: 1, marginTop: 0 },
   addAttachmentButton: { backgroundColor: '#eef2ff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },

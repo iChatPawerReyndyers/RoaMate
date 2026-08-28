@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
@@ -8,12 +9,14 @@ import { useAccount } from '@/app/AccountContext';
 import TripTabs from '@/app/navigation/TripTabs';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import AccountBadge from '@/features/account/AccountBadge';
+import TripInfoModal from './TripInfoModal';
 
 export default function TripHomeScreen() {
   const { currentTrip, setTripMembers } = useTrip();
   const { account } = useAccount();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
   const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
 
   useEffect(() => {
@@ -48,7 +51,9 @@ export default function TripHomeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <Text style={styles.title} numberOfLines={1}>{currentTrip.name ?? 'Your trip'}</Text>
+          <TouchableOpacity style={styles.titleTouchable} onPress={() => setInfoModalVisible(true)}>
+            <Text style={styles.title} numberOfLines={1}>{currentTrip.name ?? 'Your trip'}</Text>
+          </TouchableOpacity>
           {account?.username ? <AccountBadge username={account.username} /> : null}
         </View>
         <Text style={styles.subtitle}>
@@ -61,6 +66,7 @@ export default function TripHomeScreen() {
       <View style={styles.tabsWrapper}>
         <TripTabs tripId={currentTrip.tripId} onSafetyPress={() => navigation.navigate('Geo')} />
       </View>
+      <TripInfoModal visible={infoModalVisible} trip={currentTrip} onClose={() => setInfoModalVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -69,6 +75,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  titleTouchable: { flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
   subtitle: { fontSize: 12, color: '#666', marginTop: 2 },
   loading: { color: '#444', fontSize: 12, marginTop: 4 },
