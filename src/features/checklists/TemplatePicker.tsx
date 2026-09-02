@@ -1,5 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 export interface TemplateOption {
   key: string;
@@ -21,13 +23,15 @@ export default function TemplatePicker({ options, onPick, onSaveCurrentAsTemplat
       <Text style={styles.label}>Start from a template</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {options.map(option => (
-          <TouchableOpacity key={option.key} style={styles.chip} onPress={() => onPick(option)}>
-            <Text style={styles.chipText}>{option.label}</Text>
-            {option.isCustom ? <Text style={styles.customBadge}>custom</Text> : null}
+          <TouchableOpacity key={option.key} onPress={() => onPick(option)}>
+            <NeumorphicView variant="raised" size="sm" radius={neuRadii.md} style={styles.chip}>
+              <Text style={styles.chipText}>{option.label}</Text>
+              {option.isCustom ? <Text style={styles.customBadge}>custom</Text> : null}
+            </NeumorphicView>
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <TouchableOpacity style={styles.saveButton} onPress={onSaveCurrentAsTemplate}>
+      <TouchableOpacity onPress={onSaveCurrentAsTemplate}>
         <Text style={styles.saveButtonText}>💾 Save current list as template</Text>
       </TouchableOpacity>
     </View>
@@ -35,12 +39,18 @@ export default function TemplatePicker({ options, onPick, onSaveCurrentAsTemplat
 }
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  label: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 8 },
-  row: { gap: 8, paddingRight: 8 },
-  chip: { backgroundColor: '#f7f8fb', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: '#e2e2e2' },
-  chipText: { fontSize: 13, fontWeight: '600', color: '#333' },
-  customBadge: { fontSize: 9, color: '#2f6fed', marginTop: 2 },
-  saveButton: { marginTop: 10, alignSelf: 'flex-start' },
-  saveButtonText: { fontSize: 12, color: '#3b4ba0', fontWeight: '600' },
+  container: { marginBottom: neuSpacing.lg },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  row: { gap: neuSpacing.sm, paddingRight: neuSpacing.sm, paddingVertical: 2 },
+  chip: { paddingVertical: 9, paddingHorizontal: 14 },
+  chipText: { fontSize: 12, fontWeight: '700', color: neuColors.textPrimary },
+  customBadge: { fontSize: 8, color: neuColors.accent, fontWeight: '700', marginTop: 2 },
+  saveButtonText: { marginTop: 10, fontSize: 11, fontWeight: '700', color: neuColors.accent, alignSelf: 'flex-start' },
 });

@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
 import { useTrip } from '@/app/TripContext';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface FlaggedExpense {
   id: string;
@@ -88,10 +90,11 @@ export default function ConflictReviewDashboard({ tripId }: Props) {
       <FlatList
         data={groups}
         keyExtractor={(_, i) => `group-${i}`}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item: group }) => (
-          <View style={styles.groupCard}>
-            {group.expenses.map(expense => (
-              <View key={expense.id} style={styles.expenseRow}>
+          <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.groupCard}>
+            {group.expenses.map((expense, index) => (
+              <View key={expense.id} style={[styles.expenseRow, index > 0 && styles.expenseRowDivider]}>
                 <View style={styles.expenseBody}>
                   <Text style={styles.description}>{expense.description}</Text>
                   <Text style={styles.meta}>
@@ -99,10 +102,16 @@ export default function ConflictReviewDashboard({ tripId }: Props) {
                     {new Date(expense.expenseDateIso).toLocaleString()}
                   </Text>
                 </View>
-                <Switch value={!expense.deleted} onValueChange={() => toggleKeep(expense)} />
+                <Switch
+                  value={!expense.deleted}
+                  onValueChange={() => toggleKeep(expense)}
+                  trackColor={{ false: neuColors.surfaceInset, true: neuColors.accent }}
+                  thumbColor={neuColors.white}
+                  ios_backgroundColor={neuColors.surfaceInset}
+                />
               </View>
             ))}
-          </View>
+          </NeumorphicView>
         )}
       />
     </SafeAreaView>
@@ -110,15 +119,22 @@ export default function ConflictReviewDashboard({ tripId }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  header: { fontSize: 18, fontWeight: '700' },
-  subheader: { fontSize: 13, color: '#666', marginTop: 4, marginBottom: 16 },
-  groupCard: { backgroundColor: '#fff8e6', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#f0dfa0' },
-  expenseRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  container: { flex: 1, padding: neuSpacing.lg, backgroundColor: neuColors.background },
+  header: { fontSize: 18, fontWeight: '700', color: neuColors.textPrimary },
+  subheader: { fontSize: 13, color: neuColors.textMuted, marginTop: 4, marginBottom: 16, lineHeight: 18 },
+  listContent: { paddingBottom: 24 },
+  groupCard: {
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(245, 166, 35, 0.35)',
+  },
+  expenseRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: neuSpacing.sm },
+  expenseRowDivider: { borderTopWidth: 1, borderTopColor: neuColors.shadowDark },
   expenseBody: { flex: 1 },
-  description: { fontSize: 15, fontWeight: '600' },
-  meta: { fontSize: 12, color: '#777', marginTop: 2 },
+  description: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
+  meta: { fontSize: 11, color: neuColors.textMuted, marginTop: 2 },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13, color: '#777', marginTop: 6, textAlign: 'center' },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary },
+  emptySubtitle: { fontSize: 13, color: neuColors.textMuted, marginTop: 6, textAlign: 'center' },
 });

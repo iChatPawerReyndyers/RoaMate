@@ -1,0 +1,82 @@
+diff --git a/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm b/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
+index 456c311..2e221d8 100644
+--- a/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
++++ b/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
+@@ -441,33 +441,54 @@ static const NSInteger MLRN_MIGRATION_VERSION = 1;
+ }
+ 
+ - (NSDictionary *)_unarchiveContext:(MLNOfflinePack *)pack {
+-  NSError *unarchiveError = nil;
+-  id contextUnknown = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSString class]
+-                                                        fromData:pack.context
+-                                                           error:&unarchiveError];
++  // NSKeyedUnarchiver's "secure" unarchivedObjectOfClass:fromData:error:
++  // API is documented to populate `error` on a normal decode failure, but
++  // can instead raise an uncaught NSException for certain malformed or
++  // class-mismatched archives - e.g. a pre-v5 pack whose context was
++  // archived as NSDictionary (see runMigrations' comment on the format
++  // history below), being decoded here with an NSString class constraint.
++  // migrateContextIfNeeded/runMigrations exists specifically to convert
++  // old packs before this ever runs, but if a device somehow still has a
++  // pack in an unmigrated or otherwise unexpected format, this call was
++  // previously unguarded against that exception, taking the whole app
++  // down (SIGABRT) rather than falling through to the "return @{}"
++  // graceful-failure paths already written just below it. Wrapping in
++  // @try/@catch makes the exception path behave the same as the
++  // already-handled error-parameter path: log it, treat as empty
++  // metadata, keep running.
++  @try {
++    NSError *unarchiveError = nil;
++    id contextUnknown = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSString class]
++                                                          fromData:pack.context
++                                                             error:&unarchiveError];
+ 
+-  if (unarchiveError != nil) {
+-    NSLog(@"[MLRNOfflineModule] Failed to unarchive context: %@",
+-          unarchiveError.localizedDescription);
+-    return @{};
+-  }
++    if (unarchiveError != nil) {
++      NSLog(@"[MLRNOfflineModule] Failed to unarchive context: %@",
++            unarchiveError.localizedDescription);
++      return @{};
++    }
+ 
+-  // After migration, all packs should be in JSON string format
+-  if (contextUnknown == nil) {
+-    return @{};
+-  }
++    // After migration, all packs should be in JSON string format
++    if (contextUnknown == nil) {
++      return @{};
++    }
+ 
+-  // Parse JSON string to dictionary
+-  if ([contextUnknown isKindOfClass:[NSString class]]) {
+-    NSDictionary *contextDictionary = [NSJSONSerialization
+-        JSONObjectWithData:[contextUnknown dataUsingEncoding:NSUTF8StringEncoding]
+-                   options:NSJSONReadingMutableContainers
+-                     error:nil];
+-    return contextDictionary ?: @{};
+-  }
++    // Parse JSON string to dictionary
++    if ([contextUnknown isKindOfClass:[NSString class]]) {
++      NSDictionary *contextDictionary = [NSJSONSerialization
++          JSONObjectWithData:[contextUnknown dataUsingEncoding:NSUTF8StringEncoding]
++                     options:NSJSONReadingMutableContainers
++                       error:nil];
++      return contextDictionary ?: @{};
++    }
+ 
+-  // This should not happen after migration, but handle gracefully
+-  return @{};
++    // This should not happen after migration, but handle gracefully
++    return @{};
++  } @catch (NSException *exception) {
++    NSLog(@"[MLRNOfflineModule] Exception while unarchiving pack context (likely an unmigrated legacy pack): %@",
++          exception.reason);
++    return @{};
++  }
+ }
+ 
+ /**

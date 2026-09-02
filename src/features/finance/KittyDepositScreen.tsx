@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface KittyDeposit {
   id: string;
@@ -93,49 +98,57 @@ export default function KittyDepositScreen({ tripId, tripMembers, currency }: Pr
         <Text style={styles.header}>Shared trip kitty</Text>
         <Text style={styles.total}>{Cents.format(Cents.of(totalCents), currency)}</Text>
 
-        <View style={styles.card}>
+        <NeuCard size="md" style={styles.card}>
           <Text style={styles.cardTitle}>Contributions</Text>
-          {tripMembers.map(member => (
-            <View key={member.userId} style={styles.row}>
+          {tripMembers.map((member, index) => (
+            <View key={member.userId} style={[styles.row, index > 0 && styles.rowDivider]}>
               <Text style={styles.rowLabel}>{member.displayName}</Text>
               <Text style={styles.rowValue}>
                 {Cents.format(Cents.of(totalsByUser.get(member.userId) ?? 0), currency)}
               </Text>
             </View>
           ))}
-        </View>
+        </NeuCard>
 
-        <View style={styles.card}>
+        <NeuCard size="md" style={styles.card}>
           <Text style={styles.cardTitle}>Log a deposit</Text>
           <Text style={styles.label}>Member</Text>
           <View style={styles.memberRow}>
-            {tripMembers.map(member => (
-              <TouchableOpacity
-                key={member.userId}
-                style={[styles.memberChip, depositorUserId === member.userId && styles.memberChipActive]}
-                onPress={() => setDepositorUserId(member.userId)}
-              >
-                <Text
-                  style={[styles.memberChipText, depositorUserId === member.userId && styles.memberChipTextActive]}
-                >
-                  {member.displayName}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {tripMembers.map(member => {
+              const selected = depositorUserId === member.userId;
+              return (
+                <TouchableOpacity key={member.userId} onPress={() => setDepositorUserId(member.userId)}>
+                  <NeumorphicView
+                    variant={selected ? 'raised' : 'inset'}
+                    size="sm"
+                    radius={neuRadii.md}
+                    backgroundColor={selected ? neuColors.accent : neuColors.surfaceInset}
+                    style={styles.memberChip}
+                  >
+                    <Text style={[styles.memberChipText, selected && styles.memberChipTextActive]}>
+                      {member.displayName}
+                    </Text>
+                  </NeumorphicView>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <Text style={styles.label}>Amount</Text>
-          <TextInput
-            style={styles.input}
+          <NeuTextInput
             value={amountDollars}
             onChangeText={setAmountDollars}
             keyboardType="decimal-pad"
             placeholder="0.00"
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <TouchableOpacity style={styles.submitButton} onPress={handleLogDeposit} disabled={saving}>
-            <Text style={styles.submitButtonText}>{saving ? 'Saving…' : '+ Log a deposit'}</Text>
-          </TouchableOpacity>
-        </View>
+          <NeuButton
+            label={saving ? 'Saving…' : '+ Log a deposit'}
+            variant="primary"
+            onPress={handleLogDeposit}
+            loading={saving}
+            style={styles.submitButton}
+          />
+        </NeuCard>
 
         <Text style={styles.recentHeader}>Recent deposits</Text>
         {deposits
@@ -152,25 +165,44 @@ export default function KittyDepositScreen({ tripId, tripMembers, currency }: Pr
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16 },
-  header: { fontSize: 18, fontWeight: '600', color: '#555' },
-  total: { fontSize: 32, fontWeight: '700', marginBottom: 20 },
-  card: { backgroundColor: '#f5f8ff', borderRadius: 16, padding: 16, marginBottom: 16 },
-  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  rowLabel: { fontSize: 14 },
-  rowValue: { fontSize: 14, fontWeight: '600' },
-  label: { fontSize: 12, fontWeight: '600', color: '#666', marginTop: 8, marginBottom: 6 },
-  memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  memberChip: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: '#ddd' },
-  memberChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
-  memberChipText: { fontSize: 12, color: '#444', fontWeight: '600' },
-  memberChipTextActive: { color: '#fff' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, backgroundColor: '#fff' },
-  error: { color: '#b00020', fontSize: 12, marginTop: 8 },
-  submitButton: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 12 },
-  submitButtonText: { color: '#fff', fontWeight: '700' },
-  recentHeader: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 8 },
-  recentLine: { fontSize: 13, color: '#444', marginBottom: 6 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg },
+  header: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  total: { fontSize: 32, fontWeight: '700', marginTop: 4, marginBottom: 20, color: neuColors.textPrimary },
+  card: { padding: 16, marginBottom: 16 },
+  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, color: neuColors.textPrimary },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: neuColors.shadowDark },
+  rowLabel: { fontSize: 14, color: neuColors.textPrimary },
+  rowValue: { fontSize: 14, fontWeight: '600', color: neuColors.textPrimary },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: neuSpacing.sm },
+  memberChip: { paddingVertical: 7, paddingHorizontal: 14 },
+  memberChipText: { fontSize: 12, fontWeight: '700', color: neuColors.textMuted },
+  memberChipTextActive: { color: neuColors.white },
+  error: { color: neuColors.danger, fontSize: 12, marginTop: 8 },
+  submitButton: { marginTop: 14 },
+  recentHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  recentLine: { fontSize: 13, color: neuColors.textPrimary, marginBottom: 6 },
 });

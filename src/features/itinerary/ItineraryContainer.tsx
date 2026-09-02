@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { apiClient, ApiError } from '@/services/api/client';
@@ -12,9 +11,11 @@ import { neuColors } from '@/theme/neumorphic';
 
 interface Props {
   tripId: string;
+  /** Called instead of navigating to the full DestinationForm screen when "Edit" is tapped - see ItineraryHubScreen. */
+  onRequestEditOnMap: (destinationId: string) => void;
 }
 
-export default function ItineraryContainer({ tripId }: Props) {
+export default function ItineraryContainer({ tripId, onRequestEditOnMap }: Props) {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,17 +101,17 @@ export default function ItineraryContainer({ tripId }: Props) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <View style={styles.centered}>
         <ActivityIndicator size="large" color={neuColors.accent} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -128,9 +129,7 @@ export default function ItineraryContainer({ tripId }: Props) {
         onAddDestination={() => {
           navigation.navigate('DestinationForm', { tripId });
         }}
-        onEditDestination={destinationId => {
-          navigation.navigate('DestinationForm', { tripId, destinationId });
-        }}
+        onEditDestination={onRequestEditOnMap}
         onRemoveDestination={handleRemove}
       />
       <NeuConfirmModal

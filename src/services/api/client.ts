@@ -32,6 +32,25 @@ export const ALLOW_TEST_MODE_IN_RELEASE_BUILDS = true;
 export const TEST_MODE = (__DEV__ || ALLOW_TEST_MODE_IN_RELEASE_BUILDS) && USE_MOCK_DATA_WHEN_OFFLINE;
 
 /**
+ * When there's no backend running at all (the common case while just
+ * clicking through UI), every single request still has to actually try
+ * the real API first and wait out FETCH_TIMEOUT_MS (5s) before falling
+ * back to mock data - see the catch block in request() below. That 5s-per-
+ * request wait, on every screen, makes the app feel frozen/broken rather
+ * than "working offline", especially since several screens fire off more
+ * than one request on mount.
+ *
+ * Turning this on skips the real network attempt entirely when TEST_MODE
+ * is active: matched endpoints resolve from mockData.ts immediately, and
+ * anything without a mock route fails immediately too (as a
+ * NetworkUnavailableError, same as it would after the 5s timeout) instead
+ * of hanging first. Leave this false to still exercise the real
+ * fetch-then-fallback path (e.g. testing what happens when a real backend
+ * drops mid-session).
+ */
+export const FORCE_MOCK_ONLY = true;
+
+/**
  * Android emulators run in their own virtual network - `localhost` from
  * inside the emulator refers to the emulator itself, not your host
  * machine. `10.0.2.2` is the special alias Android's emulator provides
@@ -131,6 +150,19 @@ async function doFetch(path: string, method: string, token: string | null, body?
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const isAuthPath = path.startsWith('/api/v1/auth');
+
+  if (TEST_MODE && FORCE_MOCK_ONLY) {
+    const mocked = resolveMockResponse(method, path, body);
+    if (mocked) {
+      console.warn(`[mock] FORCE_MOCK_ONLY active, returning mock data for ${method} ${path}`);
+      return mocked.data as T;
+    }
+    // No mock route defined for this endpoint yet - fail the same way the
+    // real timeout path would (NetworkUnavailableError), just without
+    // actually waiting FETCH_TIMEOUT_MS first.
+    throw new NetworkUnavailableError(new Error(`No mock route defined for ${method} ${path}`));
+  }
+
   const token = isAuthPath ? null : await getAuthToken();
 
   let response;

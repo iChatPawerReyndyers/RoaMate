@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import type { DestinationPriority } from './ItineraryScreen';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 export interface DestinationFormValues {
   name: string;
@@ -38,6 +42,11 @@ interface Props {
  * plain URLs/paths for now - attaching a file straight from the device
  * picker needs a document-picker library that isn't in the project yet
  * (see the handoff notes on this feature).
+ *
+ * Visual language: brought in line with the neumorphic system used
+ * elsewhere in Itinerary/Expenses - NeuTextInput for inset fields, a
+ * raised-pill priority selector matching NeuSegmentedControl's look, and
+ * NeuButton for actions.
  */
 export default function DestinationFormScreen({ initialValues, onSubmit }: Props) {
   const [name, setName] = useState(initialValues?.name ?? '');
@@ -81,17 +90,17 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Mount Pulag Trailhead" />
+        <NeuTextInput value={name} onChangeText={setName} placeholder="Mount Pulag Trailhead" style={styles.input} />
 
         <Text style={styles.label}>Address</Text>
-        <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Street, city" />
+        <NeuTextInput value={address} onChangeText={setAddress} placeholder="Street, city" style={styles.input} />
 
         <Text style={styles.label}>Operating hours</Text>
-        <TextInput
-          style={styles.input}
+        <NeuTextInput
           value={operatingHours}
           onChangeText={setOperatingHours}
           placeholder="e.g. 8:00 AM - 5:00 PM"
+          style={styles.input}
         />
 
         <Text style={styles.label}>Priority</Text>
@@ -99,76 +108,88 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
           {PRIORITY_OPTIONS.map(option => {
             const selected = priority === option.key;
             return (
-              <TouchableOpacity
-                key={option.key}
-                style={[styles.priorityOption, selected && styles.priorityOptionSelected]}
-                onPress={() => setPriority(option.key)}
-              >
-                <Text style={[styles.priorityOptionText, selected && styles.priorityOptionTextSelected]}>
-                  {option.label}
-                </Text>
+              <TouchableOpacity key={option.key} onPress={() => setPriority(option.key)} style={styles.priorityFlex}>
+                <NeumorphicView
+                  variant={selected ? 'raised' : 'inset'}
+                  size="sm"
+                  radius={neuRadii.md}
+                  backgroundColor={selected ? neuColors.accent : neuColors.surfaceInset}
+                  style={styles.priorityOption}
+                >
+                  <Text style={[styles.priorityOptionText, selected && styles.priorityOptionTextSelected]}>
+                    {option.label}
+                  </Text>
+                </NeumorphicView>
               </TouchableOpacity>
             );
           })}
         </View>
 
         <Text style={styles.label}>Target budget</Text>
-        <TextInput
-          style={styles.input}
+        <NeuTextInput
           value={targetBudgetDollars}
           onChangeText={setTargetBudgetDollars}
           keyboardType="decimal-pad"
           placeholder="0.00"
+          style={styles.input}
         />
 
         <Text style={styles.label}>Attachments</Text>
         <Text style={styles.hint}>Paste a link to a ticket or PDF (device file picker not wired up yet).</Text>
         <View style={styles.attachmentRow}>
-          <TextInput
-            style={[styles.input, styles.attachmentInput]}
+          <NeuTextInput
             value={newAttachmentUrl}
             onChangeText={setNewAttachmentUrl}
             placeholder="https://..."
+            style={styles.attachmentInput}
           />
-          <TouchableOpacity style={styles.addAttachmentButton} onPress={addAttachment}>
-            <Text style={styles.addAttachmentButtonText}>Add</Text>
-          </TouchableOpacity>
+          <NeuButton label="Add" variant="secondary" onPress={addAttachment} style={styles.addAttachmentButton} />
         </View>
         {attachmentUrls.map((url, i) => (
-          <View key={`${url}-${i}`} style={styles.attachmentChip}>
+          <NeumorphicView key={`${url}-${i}`} variant="inset" radius={neuRadii.md} style={styles.attachmentChip}>
             <Text style={styles.attachmentChipText} numberOfLines={1}>{url}</Text>
-            <TouchableOpacity onPress={() => removeAttachment(i)}>
+            <TouchableOpacity onPress={() => removeAttachment(i)} hitSlop={8}>
               <Text style={styles.removeAttachment}>Remove</Text>
             </TouchableOpacity>
-          </View>
+          </NeumorphicView>
         ))}
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Save Destination</Text>
-        </TouchableOpacity>
+        <NeuButton label="Save Destination" variant="primary" onPress={handleSubmit} style={styles.submitButton} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  scroll: { padding: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555', marginTop: 14 },
-  hint: { fontSize: 11, color: '#888', marginTop: 2, marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4 },
-  priorityRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  priorityOption: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
-  priorityOptionSelected: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
-  priorityOptionText: { fontSize: 12, fontWeight: '600', color: '#555' },
-  priorityOptionTextSelected: { color: '#fff' },
-  attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  attachmentInput: { flex: 1, marginTop: 0 },
-  addAttachmentButton: { backgroundColor: '#eef2ff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },
-  addAttachmentButtonText: { color: '#3b4ba0', fontWeight: '700', fontSize: 13 },
-  attachmentChip: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f7f8fb', borderRadius: 8, padding: 10, marginTop: 8 },
-  attachmentChipText: { fontSize: 12, color: '#333', flex: 1, marginRight: 8 },
-  removeAttachment: { fontSize: 12, color: '#b00020', fontWeight: '600' },
-  submitButton: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 28, marginBottom: 40 },
-  submitButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  scroll: { padding: neuSpacing.lg, paddingBottom: 40 },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  hint: { fontSize: 11, color: neuColors.textMuted, marginTop: -2, marginBottom: 8 },
+  input: { marginBottom: 0 },
+  priorityRow: { flexDirection: 'row', gap: neuSpacing.sm, marginTop: 2 },
+  priorityFlex: { flex: 1 },
+  priorityOption: { paddingVertical: 9, alignItems: 'center', justifyContent: 'center' },
+  priorityOptionText: { fontSize: 11, fontWeight: '700', color: neuColors.textMuted },
+  priorityOptionTextSelected: { color: neuColors.white },
+  attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: neuSpacing.sm },
+  attachmentInput: { flex: 1 },
+  addAttachmentButton: { alignSelf: 'stretch', justifyContent: 'center' },
+  attachmentChip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: neuSpacing.md,
+    marginTop: neuSpacing.sm,
+  },
+  attachmentChipText: { fontSize: 12, color: neuColors.textPrimary, flex: 1, marginRight: 8 },
+  removeAttachment: { fontSize: 12, color: neuColors.danger, fontWeight: '700' },
+  submitButton: { marginTop: 28, marginBottom: 4 },
 });

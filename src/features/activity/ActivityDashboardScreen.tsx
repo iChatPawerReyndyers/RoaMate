@@ -1,15 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import { ElevationTracker } from './ElevationTracker';
 import { PedometerService } from './PedometerService';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface Props {
   tripId: string;
   destinationId?: string;
   destinationName?: string;
 }
+
+const QUICK_STEPS = [100, 500, 1000];
 
 export default function ActivityDashboardScreen({ tripId, destinationId, destinationName }: Props) {
   const [userId, setUserId] = useState<string>('');
@@ -88,8 +93,18 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
     setStatus(`Queued ${count} steps for upload.`);
   };
 
+  // Deliberately a plain View, not SafeAreaView: this screen is rendered
+  // in two different navigation contexts - nested inside ItineraryHubScreen's
+  // Activity tab (where TripHomeScreen's SafeAreaView already covers the
+  // top/bottom insets) AND as its own stack push via TripStack's 'Activity'
+  // route (which gets top-inset coverage from its native header instead,
+  // and wraps this component in its own SafeAreaView for the bottom edge
+  // only - see TripStack.tsx). A component used in two different framing
+  // contexts shouldn't bake in an assumption that's only correct for one
+  // of them; whichever screen embeds this one decides what safe-area
+  // handling it actually needs.
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Activity Dashboard</Text>
         {destinationName ? (
@@ -102,20 +117,20 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Manual Step Entry</Text>
           <View style={styles.stepRow}>
-            <TextInput
-              style={styles.stepInput}
+            <NeuTextInput
               value={stepCountText}
               keyboardType="number-pad"
               onChangeText={setStepCountText}
+              style={styles.stepInput}
             />
-            <TouchableOpacity style={styles.button} onPress={recordSteps}>
-              <Text style={styles.buttonText}>Record</Text>
-            </TouchableOpacity>
+            <NeuButton label="Record" variant="primary" onPress={recordSteps} style={styles.recordButton} />
           </View>
           <View style={styles.quickButtons}>
-            {[100, 500, 1000].map(value => (
-              <TouchableOpacity key={value} style={styles.quickButton} onPress={() => quickStep(value)}>
-                <Text style={styles.quickButtonText}>+{value}</Text>
+            {QUICK_STEPS.map(value => (
+              <TouchableOpacity key={value} onPress={() => quickStep(value)}>
+                <NeumorphicView variant="raised" size="sm" radius={neuRadii.md} style={styles.quickButton}>
+                  <Text style={styles.quickButtonText}>+{value}</Text>
+                </NeumorphicView>
               </TouchableOpacity>
             ))}
           </View>
@@ -123,48 +138,59 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Elevation Tracking</Text>
-          <TouchableOpacity
-            style={[styles.button, tracking && styles.disabledButton]}
-            disabled={tracking}
-            onPress={startElevationTracking}
-          >
-            <Text style={styles.buttonText}>Start Mountain Session</Text>
+          <TouchableOpacity disabled={tracking} onPress={startElevationTracking}>
+            <NeumorphicView
+              variant="raised"
+              radius={neuRadii.lg}
+              backgroundColor={tracking ? neuColors.surfaceInset : neuColors.accent}
+              style={styles.elevationButton}
+            >
+              <Text style={[styles.elevationButtonText, tracking && styles.elevationButtonTextDisabled]}>
+                Start Mountain Session
+              </Text>
+            </NeumorphicView>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, !tracking && styles.disabledButton]}
-            disabled={!tracking}
-            onPress={stopElevationTracking}
-          >
-            <Text style={styles.buttonText}>Stop and Upload</Text>
+          <TouchableOpacity disabled={!tracking} onPress={stopElevationTracking}>
+            <NeumorphicView
+              variant="raised"
+              radius={neuRadii.lg}
+              backgroundColor={!tracking ? neuColors.surfaceInset : neuColors.accent}
+              style={styles.elevationButton}
+            >
+              <Text style={[styles.elevationButtonText, !tracking && styles.elevationButtonTextDisabled]}>
+                Stop and Upload
+              </Text>
+            </NeumorphicView>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.statusBox}>
+        <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.statusBox}>
           <Text style={styles.statusTitle}>Status</Text>
           <Text style={styles.statusText}>{status}</Text>
-        </View>
+        </NeumorphicView>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16 },
-  header: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  attachedTo: { fontSize: 13, color: '#2f6fed', fontWeight: '600', marginBottom: 8 },
-  description: { color: '#555', marginBottom: 16, lineHeight: 20 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg },
+  header: { fontSize: 22, fontWeight: '700', marginBottom: 12, color: neuColors.textPrimary },
+  attachedTo: { fontSize: 13, color: neuColors.accent, fontWeight: '600', marginBottom: 8 },
+  description: { color: neuColors.textMuted, marginBottom: 16, lineHeight: 20 },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  stepInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 16 },
-  button: { backgroundColor: '#2f6fed', borderRadius: 12, padding: 14, alignItems: 'center', minWidth: 120 },
-  buttonText: { color: '#fff', fontWeight: '700' },
-  quickButtons: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  quickButton: { backgroundColor: '#eef2ff', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14 },
-  quickButtonText: { color: '#2f6fed', fontWeight: '700' },
-  disabledButton: { opacity: 0.4 },
-  statusBox: { backgroundColor: '#f5f8ff', borderRadius: 16, padding: 16 },
-  statusTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  statusText: { color: '#444' },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, color: neuColors.textPrimary },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: neuSpacing.sm },
+  stepInput: { flex: 1, marginBottom: 0 },
+  recordButton: { minWidth: 100, justifyContent: 'center' },
+  quickButtons: { flexDirection: 'row', gap: neuSpacing.sm, marginTop: 10 },
+  quickButton: { paddingVertical: 10, paddingHorizontal: 14 },
+  quickButtonText: { color: neuColors.textPrimary, fontWeight: '700' },
+  elevationButton: { padding: 14, alignItems: 'center', marginBottom: 10 },
+  elevationButtonText: { color: neuColors.white, fontWeight: '700' },
+  elevationButtonTextDisabled: { color: neuColors.textMuted },
+  statusBox: { padding: 16 },
+  statusTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8, color: neuColors.textPrimary },
+  statusText: { color: neuColors.textMuted },
 });

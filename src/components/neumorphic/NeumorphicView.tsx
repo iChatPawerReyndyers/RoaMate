@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { PixelRatio, StyleProp, View, ViewStyle } from 'react-native';
 import { neuColors, neuRadii, neuShadow } from '@/theme/neumorphic';
 
 type Variant = 'raised' | 'inset' | 'flat';
@@ -15,79 +15,54 @@ interface Props {
 }
 
 /**
- * Neither iOS nor Android natively support a single view casting two
- * differently-colored shadows (one light, one dark) at once - RN's
- * shadowColor/shadowOffset/shadowOpacity/shadowRadius are singular per
- * view. The standard trick (used here) is to stack THREE identically
- * shaped/colored views on top of each other: the bottom one casts the
- * dark shadow (offset down-right), the middle one casts the light shadow
- * (offset up-left), and the top one holds the actual content with no
- * shadow of its own - since all three are the same opaque flat color and
- * exactly overlap, they visually read as one flat surface with both
- * shadows visible around its edges.
+ * Rebuilt on RN's native `boxShadow` style property (New Architecture
+ * only - this project has newArchEnabled=true in
+ * android/gradle.properties, and is on RN 0.86.2, well within the 0.76+
+ * range this landed in). It implements the real CSS box-shadow spec at
+ * the platform level, on both iOS and Android identically, and accepts
+ * the same comma-separated multi-shadow string CSS does - so a single
+ * View can finally cast both a dark shadow (bottom-right) and a light
+ * shadow (top-left) at once, which is the actual definition of the
+ * neumorphic look.
  *
- * iOS renders shadowColor/shadowOffset/shadowOpacity/shadowRadius
- * natively and should match the mockups closely. Android's shadow
- * rendering (shadowColor + elevation together) is real but visually
- * cruder than iOS for soft, blurred, colored shadows - this is a platform
- * limitation, not a bug in this component. Worth a visual check on a real
- * Android device/emulator; a small elevation bump or radius tweak per
- * platform may be worth it once you've seen it rendered there.
+ * This replaces an earlier version of this component that predated
+ * boxShadow being usable here and worked around its absence by stacking
+ * three separate Views (one per shadow direction, plus a content layer)
+ * and using iOS's shadowColor/shadowOffset/shadowOpacity/shadowRadius on
+ * two of them - a real technique, but one with a hard platform
+ * limitation baked in: Android's `elevation` API can only ever cast a
+ * shadow downward, no matter what offset you give it, so there was no
+ * way to make that old approach produce a genuine light/highlight edge
+ * on Android at all (it was approximated with a border tint instead,
+ * which read as noticeably weaker than the real thing). boxShadow has no
+ * such limitation - both shadow directions render for real on both
+ * platforms - so raised cards, buttons, and FABs should now look
+ * consistent across iOS and Android rather than iOS-only.
  *
- * variant="inset" (used for text inputs, unchecked checkboxes, disabled
- * buttons, track backgrounds) can't use real shadows at all - CSS's
- * `inset` keyword has no RN equivalent. Approximated instead with a
- * bevelled border: darker on the top/left edge, lighter on the
- * bottom/right, which reads as a pressed-in groove without needing any
- * shadow API. This is cheap, reliable, and identical on both platforms.
+ * variant="inset" (text inputs, unchecked checkboxes, disabled buttons,
+ * toggle tracks) still can't use a real shadow - CSS itself needs a
+ * separate `inset` keyword per shadow layer that this RN property doesn't
+ * yet support. Still approximated with a bevelled hairline border
+ * (darker top/left, lighter bottom/right) over the inset fill color, same
+ * as before - this part of the technique was never the problem, so it's
+ * unchanged other than switching to a true 1-physical-pixel hairline via
+ * PixelRatio for a crisper groove line.
  *
- * variant="flat" is the plain "Dark" segmented-control-tab / unselected
- * state from the mockup - no shadow, just the surface color.
+ * variant="flat" is the plain, unselected/inactive surface - no shadow,
+ * just the surface color.
+ *
+ * Deliberately no overflow:'hidden' anywhere in this file. RN already
+ * renders a View's own background rounded via borderRadius alone, with no
+ * clipping needed for that - and combining overflow:'hidden' with
+ * boxShadow on the same element is a long-documented RN quirk
+ * (facebook/react-native#449): the two compete over the same clip/paint
+ * boundary, which shows up as a chopped, unrounded corner instead of a
+ * smooth curve. If a child ever needs clipping to the rounded shape (e.g.
+ * a background image filling a card), that belongs on a separate inner
+ * wrapper View, never on this same element.
  */
-const MARGIN_KEYS = [
-  'margin',
-  'marginTop',
-  'marginBottom',
-  'marginLeft',
-  'marginRight',
-  'marginHorizontal',
-  'marginVertical',
-  'marginStart',
-  'marginEnd',
-] as const;
 
-/**
- * Splits a caller's style into what belongs on the outer wrapper (margin -
- * spacing relative to this card's own siblings) vs. what belongs on the
- * content layer (padding, width, everything else - anything that affects
- * this card's own internal box). This split is what fixes a real bug: an
- * earlier version applied the whole style to the outer wrapper only,
- * while the two shadow layers (StyleSheet.absoluteFill) and the content
- * layer sized themselves independently - in practice, that let the
- * opaque content layer's edges land right on top of (or past) the shadow
- * layers' edges, which is why raised cards were rendering as visually
- * flat (the shadows were there, just hidden under the content), and why
- * text near a card's edge could get clipped by the content layer's
- * overflow: hidden a few pixels early. Keeping padding on the content
- * layer specifically - the one layer that's normal-flow and therefore
- * the one thing that determines the wrapper's auto-computed size - and
- * letting the two absolutely-positioned shadow layers fill that same
- * wrapper via StyleSheet.absoluteFill guarantees all three layers land on
- * pixel-identical bounds.
- */
-function splitWrapperAndContentStyle(style: StyleProp<ViewStyle>): { wrapperStyle: ViewStyle; contentStyle: ViewStyle } {
-  const flat = (StyleSheet.flatten(style) ?? {}) as ViewStyle;
-  const wrapperStyle: ViewStyle = {};
-  const contentStyle: ViewStyle = {};
-  for (const [key, value] of Object.entries(flat)) {
-    if ((MARGIN_KEYS as readonly string[]).includes(key)) {
-      (wrapperStyle as Record<string, unknown>)[key] = value;
-    } else {
-      (contentStyle as Record<string, unknown>)[key] = value;
-    }
-  }
-  return { wrapperStyle, contentStyle };
-}
+const INSET_HAIRLINE = 1.5 / PixelRatio.get();
 
 export default function NeumorphicView({
   children,
@@ -104,11 +79,11 @@ export default function NeumorphicView({
           {
             borderRadius: radius,
             backgroundColor: neuColors.surfaceInset,
-            borderWidth: 1.5,
-            borderTopColor: neuColors.shadowDark,
-            borderLeftColor: neuColors.shadowDark,
-            borderBottomColor: neuColors.shadowLight,
-            borderRightColor: neuColors.shadowLight,
+            borderWidth: INSET_HAIRLINE,
+            borderTopColor: 'rgba(169,180,204,0.65)',
+            borderLeftColor: 'rgba(169,180,204,0.65)',
+            borderBottomColor: 'rgba(255,255,255,0.75)',
+            borderRightColor: 'rgba(255,255,255,0.75)',
           },
           style,
         ]}
@@ -122,85 +97,21 @@ export default function NeumorphicView({
     return <View style={[{ borderRadius: radius, backgroundColor }, style]}>{children}</View>;
   }
 
-  const { offset, radius: blur } = neuShadow[size];
-  const shared = { borderRadius: radius, backgroundColor };
-  const { wrapperStyle, contentStyle } = splitWrapperAndContentStyle(style);
+  const distance = neuShadow[size];
+  const offset = distance / 2;
 
   return (
-    <View style={wrapperStyle}>
-      {/* Dark shadow layer, offset down-right - fills whatever box the content layer below ends up computing (see contentStyle note above) */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          shared,
-          Platform.select({
-            ios: {
-              shadowColor: neuColors.shadowDark,
-              shadowOffset: { width: offset, height: offset },
-              shadowOpacity: 0.7,
-              shadowRadius: blur,
-            },
-            android: {
-              shadowColor: neuColors.shadowDark,
-              elevation: offset + 2,
-            },
-          }),
-        ]}
-      />
-      {/* Light shadow layer, offset up-left */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          shared,
-          Platform.select({
-            ios: {
-              shadowColor: neuColors.shadowLight,
-              shadowOffset: { width: -offset, height: -offset },
-              shadowOpacity: 0.9,
-              shadowRadius: blur,
-            },
-            android: {
-              // Android can't cast a shadow "upward" via elevation the way
-              // iOS can via shadowOffset - elevation always shadows
-              // downward regardless of offset. A thin light-colored top/
-              // left border on the content layer below stands in for the
-              // highlight edge on Android instead (see the content view).
-              elevation: 0,
-            },
-          }),
-        ]}
-      />
-      {/*
-        Content layer - the only normal-flow child, so it's what determines
-        the wrapper's auto-computed size; the two shadow layers above match
-        it exactly via absoluteFill. Opaque, no shadow of its own.
-
-        Deliberately NOT setting overflow:'hidden' here. It was previously
-        always applied (to clip content to the rounded corner), but for
-        plain text content that's pure downside: any child whose measured
-        size is even a couple of pixels larger than this box's computed
-        size - which text easily can be, depending on font metrics/line
-        height/font weight - gets silently cropped instead of just
-        slightly poking past a rounded corner (which is visually
-        unnoticeable at these radii anyway). If a future consumer actually
-        needs corner-clipping (e.g. a background image filling the card),
-        it should opt in explicitly rather than every text-based card
-        paying this risk by default.
-      */}
-      <View
-        style={[
-          shared,
-          Platform.OS === 'android' && {
-            borderTopWidth: 1,
-            borderLeftWidth: 1,
-            borderTopColor: 'rgba(255,255,255,0.6)',
-            borderLeftColor: 'rgba(255,255,255,0.6)',
-          },
-          contentStyle,
-        ]}
-      >
-        {children}
-      </View>
+    <View
+      style={[
+        {
+          borderRadius: radius,
+          backgroundColor,
+          boxShadow: `${offset}px ${offset}px ${distance}px ${neuColors.shadowDark}, ${-offset}px ${-offset}px ${distance}px ${neuColors.shadowLight}`,
+        } as ViewStyle,
+        style,
+      ]}
+    >
+      {children}
     </View>
   );
 }

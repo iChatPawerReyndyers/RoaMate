@@ -1,5 +1,8 @@
 import React from 'react';
-import { Switch, Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
+import NeuToggle from '@/components/neumorphic/NeuToggle';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import { neuColors } from '@/theme/neumorphic';
 
 interface Props {
   enabled: boolean;
@@ -14,21 +17,24 @@ interface Props {
  */
 export default function LocationSharingToggle({ enabled, onToggle }: Props) {
   return (
-    <View style={styles.row}>
-      <View style={styles.flexFill}>
-        <Text style={styles.title}>Share my location</Text>
-        <Text style={styles.subtitle}>
-          Only shared on-demand when someone opens the map. No background tracking.
-        </Text>
+    <NeuCard size="md" style={styles.card}>
+      <View style={styles.row}>
+        <View style={styles.flexFill}>
+          <Text style={styles.title}>Share my location</Text>
+          <Text style={styles.subtitle}>
+            Only shared on-demand when someone opens the map. No background tracking.
+          </Text>
+        </View>
+        <NeuToggle value={enabled} onValueChange={onToggle} />
       </View>
-      <Switch value={enabled} onValueChange={onToggle} />
-    </View>
+    </NeuCard>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  card: { padding: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flexFill: { flex: 1 },
-  title: { fontSize: 15, fontWeight: '600' },
-  subtitle: { fontSize: 12, color: '#777', marginTop: 2 },
+  title: { fontSize: 14, fontWeight: '700', color: neuColors.textPrimary },
+  subtitle: { fontSize: 11, color: neuColors.textMuted, marginTop: 2 },
 });

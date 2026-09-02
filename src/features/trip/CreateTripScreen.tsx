@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient } from '@/services/api/client';
 import InviteQRCode from './InviteQRCode';
 import type { AuthStackParamList } from '@/app/navigation/AuthStack';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface TripCreatedPayload {
   id: string;
@@ -59,86 +63,101 @@ export default function CreateTripScreen({ navigation, onCreated }: Props) {
   if (createdTrip) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.title}>Trip created</Text>
-        <Text style={styles.label}>Share this with your group to join.</Text>
-        <InviteQRCode tripId={createdTrip.id} inviteCode={createdTrip.inviteCode} inviteSecret={createdTrip.inviteSecret} />
-        <Text style={styles.code}>{createdTrip.inviteCode}</Text>
-        <TouchableOpacity style={styles.button} onPress={() => onCreated(createdTrip)}>
-          <Text style={styles.buttonText}>Continue</Text>
-        </TouchableOpacity>
+        <View style={styles.qrCenter}>
+          <Text style={styles.title}>Trip created</Text>
+          <Text style={styles.label}>Share this with your group to join.</Text>
+          <InviteQRCode tripId={createdTrip.id} inviteCode={createdTrip.inviteCode} inviteSecret={createdTrip.inviteSecret} />
+          <Text style={styles.code}>{createdTrip.inviteCode}</Text>
+          <NeuButton label="Continue" variant="primary" onPress={() => onCreated(createdTrip)} style={styles.continueButton} />
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.label}>Trip name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Baguio Weekend" />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.fieldLabel}>Trip name</Text>
+        <NeuTextInput value={name} onChangeText={setName} placeholder="Baguio Weekend" />
 
-      <Text style={styles.label}>Description (optional)</Text>
-      <TextInput
-        style={[styles.input, styles.descriptionInput]}
-        value={description}
-        onChangeText={setDescription}
-        placeholder="What's this trip about?"
-        multiline
-      />
+        <Text style={styles.fieldLabel}>Description (optional)</Text>
+        <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.descriptionWrap}>
+          <TextInput
+            style={styles.descriptionInput}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What's this trip about?"
+            placeholderTextColor={neuColors.textMuted}
+            multiline
+          />
+        </NeumorphicView>
 
-      <Text style={styles.label}>Currency</Text>
-      <View style={styles.currencyRow}>
-        {CURRENCIES.map(code => (
-          <TouchableOpacity
-            key={code}
-            style={[styles.currencyChip, currency === code && styles.currencyChipActive]}
-            onPress={() => setCurrency(code)}
-          >
-            <Text style={[styles.currencyChipText, currency === code && styles.currencyChipTextActive]}>{code}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <Text style={styles.currencyHint}>All expenses and the shared kitty will run in this currency.</Text>
+        <Text style={styles.fieldLabel}>Currency</Text>
+        <View style={styles.currencyRow}>
+          {CURRENCIES.map(code => {
+            const selected = currency === code;
+            return (
+              <TouchableOpacity key={code} onPress={() => setCurrency(code)}>
+                <NeumorphicView
+                  variant={selected ? 'raised' : 'inset'}
+                  size="sm"
+                  radius={14}
+                  backgroundColor={selected ? neuColors.accent : neuColors.surfaceInset}
+                  style={styles.currencyChip}
+                >
+                  <Text style={[styles.currencyChipText, selected && styles.currencyChipTextActive]}>{code}</Text>
+                </NeumorphicView>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.currencyHint}>All expenses and the shared kitty will run in this currency.</Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleCreate} disabled={submitting}>
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Create Trip</Text>}
-      </TouchableOpacity>
+        <NeuButton label="Create Trip" variant="primary" onPress={handleCreate} loading={submitting} style={styles.createButton} />
 
-      <View style={styles.dividerRow}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>or join a trip</Text>
-        <View style={styles.dividerLine} />
-      </View>
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or join a trip</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
-      <View style={styles.joinRow}>
-        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('ScanQR')}>
-          <Text style={styles.joinButtonText}>Scan QR</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.joinButton} onPress={() => navigation.navigate('JoinTrip', undefined)}>
-          <Text style={styles.joinButtonText}>Enter Code</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.joinRow}>
+          <NeuButton label="Scan QR" variant="secondary" onPress={() => navigation.navigate('ScanQR')} style={styles.joinFlex} />
+          <NeuButton label="Enter Code" variant="secondary" onPress={() => navigation.navigate('JoinTrip', undefined)} style={styles.joinFlex} />
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4, marginBottom: 20 },
-  descriptionInput: { minHeight: 70, textAlignVertical: 'top' },
-  currencyRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  currencyChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#ddd' },
-  currencyChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
-  currencyChipText: { fontSize: 13, fontWeight: '600', color: '#555' },
-  currencyChipTextActive: { color: '#fff' },
-  currencyHint: { fontSize: 11, color: '#888', marginTop: 8, marginBottom: 20 },
-  code: { fontSize: 20, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: 20 },
-  button: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 16 },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: '#ddd' },
-  dividerText: { marginHorizontal: 10, fontSize: 12, color: '#888' },
-  joinRow: { flexDirection: 'row', gap: 10 },
-  joinButton: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 14, alignItems: 'center' },
-  joinButtonText: { fontWeight: '600', color: '#2f6fed' },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  scroll: { padding: neuSpacing.lg, paddingBottom: 40 },
+  title: { fontSize: 20, fontWeight: '700', marginBottom: 4, color: neuColors.textPrimary },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  label: { fontSize: 13, color: neuColors.textMuted, textAlign: 'center' },
+  descriptionWrap: { minHeight: 70 },
+  descriptionInput: { flex: 1, padding: 12, fontSize: 13, color: neuColors.textPrimary, textAlignVertical: 'top' },
+  currencyRow: { flexDirection: 'row', gap: neuSpacing.sm, flexWrap: 'wrap' },
+  currencyChip: { paddingVertical: 8, paddingHorizontal: 14 },
+  currencyChipText: { fontSize: 13, fontWeight: '700', color: neuColors.textMuted },
+  currencyChipTextActive: { color: neuColors.white },
+  currencyHint: { fontSize: 11, color: neuColors.textMuted, marginTop: 8 },
+  createButton: { marginTop: 22 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, marginBottom: 14 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: neuColors.shadowDark },
+  dividerText: { marginHorizontal: 10, fontSize: 12, color: neuColors.textMuted },
+  joinRow: { flexDirection: 'row', gap: neuSpacing.sm },
+  joinFlex: { flex: 1 },
+  qrCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: neuSpacing.lg },
+  code: { fontSize: 22, fontWeight: '700', letterSpacing: 3, textAlign: 'center', marginTop: 4, color: neuColors.textPrimary },
+  continueButton: { width: '100%', marginTop: 24 },
 });

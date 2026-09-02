@@ -108,8 +108,16 @@ export default function ExpensesHubScreen({ tripId }: Props) {
     loadExpenses();
   };
 
+  // Outer wrapper deliberately a plain View, not SafeAreaView: this screen
+  // is a tab embedded inside TripTabs, which sits inside TripHomeScreen's
+  // own SafeAreaView - stacking a second one here just doubles up the same
+  // top/bottom inset as dead space. The two <Modal> SafeAreaViews below are
+  // NOT the same situation and are kept as-is: RN's Modal renders as its
+  // own separate native layer outside this component's view hierarchy, so
+  // it doesn't inherit TripHomeScreen's safe-area handling at all - those
+  // two genuinely need their own.
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
           <Text style={styles.header}>Expenses</Text>
@@ -202,7 +210,7 @@ export default function ExpensesHubScreen({ tripId }: Props) {
           <ConflictReviewDashboard tripId={tripId} />
         </SafeAreaView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

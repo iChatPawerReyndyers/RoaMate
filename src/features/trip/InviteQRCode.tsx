@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii } from '@/theme/neumorphic';
 
 interface Props {
   tripId: string;
@@ -29,9 +31,12 @@ export default function InviteQRCode({ tripId, inviteCode, inviteSecret }: Props
 
   return (
     <View style={styles.container}>
-      <View style={styles.qrWrapper}>
-        <QRCode value={payload} size={168} />
-      </View>
+      <NeumorphicView variant="inset" radius={neuRadii.xl} style={styles.qrWrapper}>
+        {/* QR keeps plain white/black - real-world scan reliability matters more than matching the palette here */}
+        <View style={styles.qrInner}>
+          <QRCode value={payload} size={160} />
+        </View>
+      </NeumorphicView>
       <Text style={styles.hint}>Works offline - no signal needed to scan or type this code.</Text>
     </View>
   );
@@ -39,6 +44,7 @@ export default function InviteQRCode({ tripId, inviteCode, inviteSecret }: Props
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center', marginVertical: 16 },
-  qrWrapper: { padding: 16, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#eee' },
-  hint: { fontSize: 12, color: '#777', marginTop: 10, textAlign: 'center' },
+  qrWrapper: { padding: 16 },
+  qrInner: { backgroundColor: neuColors.white, padding: 10, borderRadius: 10 },
+  hint: { fontSize: 12, color: neuColors.textMuted, marginTop: 10, textAlign: 'center' },
 });

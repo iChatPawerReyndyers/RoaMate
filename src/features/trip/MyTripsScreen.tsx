@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -8,6 +8,10 @@ import { useTrip } from '@/app/TripContext';
 import { useAccount } from '@/app/AccountContext';
 import { cacheTripsFromServer, getCachedTrips, CachedTrip, TripDto } from '@/db/repositories/tripsRepository';
 import AccountBadge from '@/features/account/AccountBadge';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { NeuEmptyState } from '@/components/neumorphic/NueModal';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 /**
  * TRIP-01: landing screen on every app open. Always tries the server first
@@ -77,41 +81,47 @@ export default function MyTripsScreen() {
         <Text style={styles.title}>My trips</Text>
         <View style={styles.headerRight}>
           {account?.username ? <AccountBadge username={account.username} /> : null}
-          <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('Auth' as never)}>
-            <Text style={styles.addButtonText}>+</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Auth' as never)}>
+            <NeumorphicView variant="raised" size="sm" radius={17} backgroundColor={neuColors.accent} style={styles.addButton}>
+              <Text style={styles.addButtonText}>+</Text>
+            </NeumorphicView>
           </TouchableOpacity>
         </View>
       </View>
       {isOffline ? (
-        <View style={styles.banner}>
+        <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.banner}>
           <Text style={styles.bannerText}>You’re offline - showing your saved trips.</Text>
-        </View>
+        </NeumorphicView>
       ) : null}
       {error ? (
-        <View style={styles.banner}>
+        <NeumorphicView variant="inset" radius={neuRadii.md} style={styles.banner}>
           <Text style={styles.bannerText}>{error}</Text>
-        </View>
+        </NeumorphicView>
       ) : null}
 
       {loading && trips.length === 0 ? (
-        <ActivityIndicator style={styles.loading} />
+        <ActivityIndicator style={styles.loading} color={neuColors.accent} />
       ) : (
         <FlatList
           data={trips}
           keyExtractor={item => item.serverId}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => openTrip(item)}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardSubtitle}>
-                Code {item.inviteCode} · {item.memberCount} member{item.memberCount === 1 ? '' : 's'}
-              </Text>
+            <TouchableOpacity onPress={() => openTrip(item)} activeOpacity={0.85}>
+              <NeuCard size="md" style={styles.tripCard}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+                <Text style={styles.cardSubtitle}>
+                  Code {item.inviteCode} · {item.memberCount} member{item.memberCount === 1 ? '' : 's'}
+                </Text>
+              </NeuCard>
             </TouchableOpacity>
           )}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>Create or join a trip to see it here.</Text>
-            </View>
+            <NeuEmptyState
+              icon="🧭"
+              title="No trips yet"
+              description="Create or join a trip to see it here."
+            />
           }
         />
       )}
@@ -120,19 +130,17 @@ export default function MyTripsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 16 },
+  container: { flex: 1, backgroundColor: neuColors.background, padding: neuSpacing.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { fontSize: 22, fontWeight: '700' },
-  addButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2f6fed', alignItems: 'center', justifyContent: 'center' },
-  addButtonText: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: -2 },
-  banner: { backgroundColor: '#fff4e5', borderRadius: 8, padding: 10, marginBottom: 12 },
-  bannerText: { color: '#8a5a00', fontSize: 13 },
+  title: { fontSize: 22, fontWeight: '700', color: neuColors.textPrimary },
+  addButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  addButtonText: { color: neuColors.white, fontSize: 20, fontWeight: '700', marginTop: -2 },
+  banner: { padding: 10, marginBottom: 12 },
+  bannerText: { color: neuColors.textPrimary, fontSize: 13 },
   loading: { marginTop: 40 },
-  list: { paddingBottom: 24 },
-  card: { backgroundColor: '#f5f8ff', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#d7e3ff' },
-  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  cardSubtitle: { color: '#555', fontSize: 13 },
-  empty: { alignItems: 'center', marginTop: 40, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed', borderRadius: 12, padding: 20 },
-  emptyText: { color: '#888', fontSize: 13 },
+  list: { paddingBottom: 24, paddingTop: 8 },
+  tripCard: { padding: 14, marginBottom: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4, color: neuColors.textPrimary },
+  cardSubtitle: { color: neuColors.textMuted, fontSize: 13 },
 });

@@ -10,6 +10,7 @@ import TripTabs from '@/app/navigation/TripTabs';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import AccountBadge from '@/features/account/AccountBadge';
 import TripInfoModal from './TripInfoModal';
+import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 export default function TripHomeScreen() {
   const { currentTrip, setTripMembers } = useTrip();
@@ -72,13 +73,19 @@ export default function TripHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  header: {
+    paddingHorizontal: neuSpacing.lg,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: neuColors.shadowDark,
+  },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   titleTouchable: { flexShrink: 1 },
-  title: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
-  subtitle: { fontSize: 12, color: '#666', marginTop: 2 },
-  loading: { color: '#444', fontSize: 12, marginTop: 4 },
-  error: { color: '#b00020', fontSize: 12, marginTop: 4 },
+  title: { fontSize: 18, fontWeight: '700', flexShrink: 1, color: neuColors.textPrimary },
+  subtitle: { fontSize: 12, color: neuColors.textMuted, marginTop: 2 },
+  loading: { color: neuColors.textMuted, fontSize: 12, marginTop: 4 },
+  error: { color: neuColors.danger, fontSize: 12, marginTop: 4 },
   tabsWrapper: { flex: 1 },
 });

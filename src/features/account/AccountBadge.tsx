@@ -1,5 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors } from '@/theme/neumorphic';
 
 interface Props {
   username: string;
@@ -11,9 +13,9 @@ export default function AccountBadge({ username }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.avatar}>
+      <NeumorphicView variant="raised" size="sm" radius={12} backgroundColor={neuColors.accent} style={styles.avatar}>
         <Text style={styles.avatarText}>{initial}</Text>
-      </View>
+      </NeumorphicView>
       <Text style={styles.username} numberOfLines={1}>{username}</Text>
     </View>
   );
@@ -21,14 +23,7 @@ export default function AccountBadge({ username }: Props) {
 
 const styles = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 140 },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#2f6fed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  username: { fontSize: 13, fontWeight: '600', color: '#333', flexShrink: 1 },
+  avatar: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: neuColors.white, fontSize: 12, fontWeight: '700' },
+  username: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary, flexShrink: 1 },
 });

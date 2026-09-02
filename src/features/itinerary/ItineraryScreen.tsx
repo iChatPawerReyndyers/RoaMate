@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   PanGestureHandler,
   PanGestureHandlerGestureEvent,
@@ -77,7 +76,7 @@ export default function ItineraryScreen({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {Object.entries(byDay).map(([day, stops]) => (
           <DaySection
@@ -97,7 +96,7 @@ export default function ItineraryScreen({
           <Text style={styles.fabIcon}>+</Text>
         </NeumorphicView>
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 

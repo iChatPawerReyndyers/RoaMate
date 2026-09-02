@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { apiClient, ApiError } from '@/services/api/client';
 import { useAccount } from '@/app/AccountContext';
 import type { AuthStackParamList } from '@/app/navigation/AuthStack';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 interface TripJoinedPayload {
   id: string;
@@ -75,21 +78,40 @@ export default function JoinTripScreen({ route, onJoined }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.label}>Invite code</Text>
-      <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder="AB3XQ9" autoCapitalize="characters" maxLength={6} />
-      <Text style={styles.label}>Your name</Text>
-      <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} placeholder="Alex" />
-      <TouchableOpacity style={styles.button} onPress={handleJoin} disabled={submitting}>
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Join Trip</Text>}
-      </TouchableOpacity>
+      <View style={styles.content}>
+        <Text style={styles.fieldLabel}>Invite code</Text>
+        <NeuTextInput
+          value={code}
+          onChangeText={setCode}
+          placeholder="AB3XQ9"
+          autoCapitalize="characters"
+          maxLength={6}
+        />
+        <Text style={styles.fieldLabel}>Your name</Text>
+        <NeuTextInput value={displayName} onChangeText={setDisplayName} placeholder="Alex" />
+        <NeuButton
+          label="Join Trip"
+          variant="primary"
+          onPress={handleJoin}
+          loading={submitting}
+          style={styles.button}
+        />
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginTop: 4, marginBottom: 20 },
-  button: { backgroundColor: '#2f6fed', borderRadius: 10, padding: 14, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700' },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  button: { marginTop: 22 },
 });

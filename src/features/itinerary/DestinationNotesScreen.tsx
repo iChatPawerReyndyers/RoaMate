@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface LocationNote {
   id: string;
@@ -71,30 +75,44 @@ export default function DestinationNotesScreen({ destinationId, destinationName 
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Notes for {destinationName}</Text>
-        {loading ? <ActivityIndicator size="large" style={styles.spinner} /> : null}
+        {loading ? <ActivityIndicator size="large" color={neuColors.accent} style={styles.spinner} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
         <View style={styles.inputSection}>
-          <TextInput
-            style={styles.textArea}
-            value={newNote}
-            onChangeText={setNewNote}
-            placeholder="Write a note or coordinate details..."
-            multiline
-            numberOfLines={4}
+          <NeumorphicView variant="inset" radius={neuRadii.lg} style={styles.textAreaWrap}>
+            <TextInput
+              style={styles.textArea}
+              value={newNote}
+              onChangeText={setNewNote}
+              placeholder="Write a note or coordinate details..."
+              placeholderTextColor={neuColors.textMuted}
+              multiline
+              numberOfLines={4}
+            />
+          </NeumorphicView>
+          <NeuButton
+            label={saving ? 'Saving…' : 'Save Note'}
+            variant="primary"
+            onPress={handleSave}
+            loading={saving}
+            style={styles.saveButton}
           />
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-            <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save Note'}</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.notesSection}>
           {notes.map(note => (
-            <View key={note.id} style={styles.noteCard}>
+            <NeuCard key={note.id} size="md" style={styles.noteCard}>
+              <View style={styles.noteAvatarRow}>
+                <NeumorphicView variant="inset" radius={11} style={styles.avatar}>
+                  <Text style={styles.avatarText}>{note.authorUserId.slice(0, 1).toUpperCase()}</Text>
+                </NeumorphicView>
+                <Text style={styles.noteMeta}>
+                  {note.authorUserId}
+                  {note.createdAt ? ` · ${new Date(note.createdAt).toLocaleString()}` : ''}
+                </Text>
+              </View>
               <Text style={styles.noteBody}>{note.body}</Text>
-              <Text style={styles.noteMeta}>
-                {note.authorUserId} {note.createdAt ? `· ${new Date(note.createdAt).toLocaleString()}` : ''}
-              </Text>
-            </View>
+            </NeuCard>
           ))}
           {notes.length === 0 && !loading ? (
             <Text style={styles.empty}>No notes yet. Add the first one!</Text>
@@ -106,18 +124,21 @@ export default function DestinationNotesScreen({ destinationId, destinationName 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16 },
-  header: { fontSize: 22, fontWeight: '700', marginBottom: 18 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg, paddingBottom: 40 },
+  header: { fontSize: 20, fontWeight: '700', marginBottom: 18, color: neuColors.textPrimary },
   spinner: { marginVertical: 24 },
-  error: { color: '#b00020', marginBottom: 12 },
+  error: { color: neuColors.danger, marginBottom: 12 },
   inputSection: { marginBottom: 20 },
-  textArea: { minHeight: 110, borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 12, textAlignVertical: 'top' },
-  saveButton: { backgroundColor: '#2f6fed', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12 },
-  saveButtonText: { color: '#fff', fontWeight: '700' },
-  notesSection: { gap: 12 },
-  noteCard: { backgroundColor: '#f5f8ff', borderRadius: 14, padding: 14 },
-  noteBody: { fontSize: 14, color: '#222', marginBottom: 8 },
-  noteMeta: { fontSize: 12, color: '#666' },
-  empty: { color: '#555', fontStyle: 'italic' },
+  textAreaWrap: { minHeight: 110 },
+  textArea: { flex: 1, padding: 12, fontSize: 13, color: neuColors.textPrimary, textAlignVertical: 'top' },
+  saveButton: { marginTop: 12 },
+  notesSection: { gap: neuSpacing.md },
+  noteCard: { padding: 14 },
+  noteAvatarRow: { flexDirection: 'row', alignItems: 'center', gap: neuSpacing.sm, marginBottom: 8 },
+  avatar: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 10, fontWeight: '700', color: neuColors.textMuted },
+  noteBody: { fontSize: 14, color: neuColors.textPrimary },
+  noteMeta: { fontSize: 12, color: neuColors.textMuted },
+  empty: { color: neuColors.textMuted, fontStyle: 'italic' },
 });

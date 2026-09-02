@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Camera, useCameraDevice, useCodeScanner } from 'react-native-vision-camera';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@/app/navigation/AuthStack';
+import { neuColors } from '@/theme/neumorphic';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'ScanQR'>;
 
@@ -18,6 +19,12 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'ScanQR'>;
  * as plain text turned into a QR by some other means - in that fallback
  * case there's no secret to forward, so the join request behaves exactly
  * like a manually typed code.
+ *
+ * Visual note: this screen stays on a dark, full-bleed camera background
+ * (unlike the rest of the app's light neumorphic surface) since it's a
+ * live viewfinder - only the scan frame and hint text pick up the app's
+ * orange accent, to tie it back to the rest of the app without lightening
+ * the camera feed itself.
  */
 export default function ScanQRScreen({ navigation }: Props) {
   const device = useCameraDevice('back');
@@ -72,6 +79,7 @@ export default function ScanQRScreen({ navigation }: Props) {
     <View style={styles.container}>
       <Camera style={StyleSheet.absoluteFill} device={device} isActive={!scanned} codeScanner={codeScanner} />
       <View style={styles.overlay}>
+        <Text style={styles.title}>Scan QR</Text>
         <View style={styles.frame} />
         <Text style={styles.hint}>Point your camera at the trip's QR code</Text>
       </View>
@@ -81,9 +89,18 @@ export default function ScanQRScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  message: { fontSize: 15, textAlign: 'center', color: '#555' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: neuColors.background },
+  message: { fontSize: 15, textAlign: 'center', color: neuColors.textPrimary },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  frame: { width: 220, height: 220, borderWidth: 2, borderColor: '#fff', borderRadius: 16, backgroundColor: 'transparent' },
+  title: {
+    position: 'absolute',
+    top: 24,
+    color: neuColors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  frame: { width: 220, height: 220, borderWidth: 3, borderColor: neuColors.accent, borderRadius: 20, backgroundColor: 'transparent' },
   hint: { marginTop: 16, color: '#fff', fontSize: 14, fontWeight: '600' },
 });

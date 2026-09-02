@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SettlementSection from './SettlementSection';
+import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 interface Props {
   tripId: string;
@@ -24,7 +25,7 @@ export default function FinanceSummaryScreen({ tripId }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16 },
-  header: { fontSize: 22, fontWeight: '700', marginBottom: 18 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg },
+  header: { fontSize: 22, fontWeight: '700', marginBottom: 18, color: neuColors.textPrimary },
 });

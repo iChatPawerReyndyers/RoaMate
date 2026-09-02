@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ItineraryHubScreen from '@/features/itinerary/ItineraryHubScreen';
 import ExpensesHubScreen from '@/features/finance/ExpensesHubScreen';
 import ChecklistContainer from '@/features/checklists/ChecklistContainer';
+import { neuColors } from '@/theme/neumorphic';
 
 export type TripTabsParamList = {
   ItineraryTab: undefined;
@@ -27,7 +28,7 @@ const TAB_LABELS: Record<keyof TripTabsParamList, string> = {
 };
 
 function TabIcon({ route, focused }: { route: keyof TripTabsParamList; focused: boolean }) {
-  const color = focused ? '#1d4ed8' : '#888';
+  const color = focused ? neuColors.accent : neuColors.textMuted;
   if (route === 'ItineraryTab') {
     return (
       <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
@@ -57,11 +58,11 @@ function SafetyIcon() {
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path
         d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"
-        stroke="#b00020"
+        stroke={neuColors.danger}
         strokeWidth={2}
         strokeLinejoin="round"
       />
-      <Path d="M9.5 12l1.8 1.8L15 10" stroke="#b00020" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9.5 12l1.8 1.8L15 10" stroke={neuColors.danger} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -120,13 +121,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#e2e2e2',
-    backgroundColor: '#fff',
+    borderTopColor: neuColors.shadowDark,
+    backgroundColor: neuColors.background,
     paddingVertical: 8,
+    // Soft raised edge along the top of the bar, echoing the raised-card
+    // shadow language used everywhere else, without needing the full
+    // three-layer NeumorphicView treatment on something this shallow.
+    shadowColor: neuColors.shadowDark,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 8,
   },
   tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  tabLabel: { fontSize: 11, color: '#888' },
-  tabLabelActive: { color: '#1d4ed8', fontWeight: '700' },
-  safetyDivider: { width: 1, height: 28, backgroundColor: '#e2e2e2' },
-  safetyLabel: { fontSize: 11, color: '#b00020', fontWeight: '700' },
+  tabLabel: { fontSize: 11, color: neuColors.textMuted },
+  tabLabelActive: { color: neuColors.accent, fontWeight: '700' },
+  safetyDivider: { width: 1, height: 28, backgroundColor: neuColors.shadowDark },
+  safetyLabel: { fontSize: 11, color: neuColors.danger, fontWeight: '700' },
 });

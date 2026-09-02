@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import TemplatePicker, { TemplateOption } from './TemplatePicker';
+import NeuSegmentedControl from '@/components/neumorphic/NeuSegmentedControl';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 export interface Item {
   id: string;
@@ -16,6 +21,14 @@ export interface Item {
 }
 
 const PACKING_CATEGORIES: NonNullable<Item['packingItemCategory']>[] = ['CLOTHING', 'ELECTRONICS', 'TOILETRIES', 'GEAR'];
+const CATEGORY_TABS: { key: 'PACKING' | 'GROCERY'; label: string }[] = [
+  { key: 'PACKING', label: 'Packing' },
+  { key: 'GROCERY', label: 'Grocery' },
+];
+const VISIBILITY_OPTIONS: { key: 'SHARED' | 'PERSONAL'; label: string }[] = [
+  { key: 'SHARED', label: 'Shared' },
+  { key: 'PERSONAL', label: 'Personal' },
+];
 
 function formatPackingCategory(value: NonNullable<Item['packingItemCategory']>): string {
   return value.charAt(0) + value.slice(1).toLowerCase();
@@ -63,34 +76,26 @@ export default function ChecklistScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabRow}>
-        <TouchableOpacity
-          style={[styles.tab, category === 'PACKING' && styles.tabActive]}
-          onPress={() => onChangeCategory('PACKING')}
-        >
-          <Text style={[styles.tabText, category === 'PACKING' && styles.tabTextActive]}>Packing</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, category === 'GROCERY' && styles.tabActive]}
-          onPress={() => onChangeCategory('GROCERY')}
-        >
-          <Text style={[styles.tabText, category === 'GROCERY' && styles.tabTextActive]}>Grocery</Text>
-        </TouchableOpacity>
-      </View>
+      <NeuSegmentedControl options={CATEGORY_TABS} value={category} onChange={onChangeCategory} />
 
-      <TemplatePicker
-        options={templateOptions}
-        onPick={onPickTemplate}
-        onSaveCurrentAsTemplate={onSaveCurrentAsTemplate}
-      />
+      <View style={styles.templateSpacing}>
+        <TemplatePicker options={templateOptions} onPick={onPickTemplate} onSaveCurrentAsTemplate={onSaveCurrentAsTemplate} />
+      </View>
 
       <FlatList
         data={items}
         keyExtractor={i => i.id}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
+        renderItem={({ item, index }) => (
+          <View style={[styles.row, index > 0 && styles.rowDivider]}>
             <TouchableOpacity style={styles.checkRow} onPress={() => onToggle(item.id)}>
-              <View style={[styles.checkbox, item.checked && styles.checkboxChecked]} />
+              <NeumorphicView
+                variant={item.checked ? 'raised' : 'inset'}
+                radius={6}
+                backgroundColor={item.checked ? neuColors.accent : neuColors.surfaceInset}
+                style={styles.checkbox}
+              >
+                {item.checked ? <Text style={styles.checkmark}>✓</Text> : null}
+              </NeumorphicView>
               <View style={styles.labelColumn}>
                 <Text style={[styles.label, item.checked && styles.labelChecked]}>{item.label}</Text>
                 {category === 'GROCERY' && (item.quantity || item.storeCategory) ? (
@@ -125,89 +130,96 @@ export default function ChecklistScreen({
       />
 
       <View style={styles.visibilityPickerRow}>
-        <TouchableOpacity
-          style={[styles.visibilityChip, newItemVisibility === 'SHARED' && styles.visibilityChipActive]}
-          onPress={() => setNewItemVisibility('SHARED')}
-        >
-          <Text style={[styles.visibilityChipText, newItemVisibility === 'SHARED' && styles.visibilityChipTextActive]}>
-            Shared
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.visibilityChip, newItemVisibility === 'PERSONAL' && styles.visibilityChipActive]}
-          onPress={() => setNewItemVisibility('PERSONAL')}
-        >
-          <Text style={[styles.visibilityChipText, newItemVisibility === 'PERSONAL' && styles.visibilityChipTextActive]}>
-            Personal
-          </Text>
-        </TouchableOpacity>
+        {VISIBILITY_OPTIONS.map(option => {
+          const selected = newItemVisibility === option.key;
+          return (
+            <TouchableOpacity key={option.key} onPress={() => setNewItemVisibility(option.key)}>
+              <NeumorphicView
+                variant={selected ? 'raised' : 'inset'}
+                size="sm"
+                radius={neuRadii.sm}
+                backgroundColor={selected ? neuColors.accent : neuColors.surfaceInset}
+                style={styles.pillOption}
+              >
+                <Text style={[styles.pillOptionText, selected && styles.pillOptionTextSelected]}>{option.label}</Text>
+              </NeumorphicView>
+            </TouchableOpacity>
+          );
+        })}
       </View>
+
       {category === 'PACKING' ? (
         <View style={styles.categoryPickerRow}>
-          {PACKING_CATEGORIES.map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.categoryChip, newItemPackingCategory === c && styles.categoryChipActive]}
-              onPress={() => setNewItemPackingCategory(newItemPackingCategory === c ? undefined : c)}
-            >
-              <Text style={[styles.categoryChipText, newItemPackingCategory === c && styles.categoryChipTextActive]}>
-                {formatPackingCategory(c)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {PACKING_CATEGORIES.map(c => {
+            const selected = newItemPackingCategory === c;
+            return (
+              <TouchableOpacity key={c} onPress={() => setNewItemPackingCategory(selected ? undefined : c)}>
+                <NeumorphicView
+                  variant={selected ? 'raised' : 'inset'}
+                  size="sm"
+                  radius={neuRadii.sm}
+                  backgroundColor={selected ? neuColors.accent : neuColors.surfaceInset}
+                  style={styles.pillOptionSmall}
+                >
+                  <Text style={[styles.pillOptionTextSmall, selected && styles.pillOptionTextSelected]}>
+                    {formatPackingCategory(c)}
+                  </Text>
+                </NeumorphicView>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       ) : null}
+
       <View style={styles.addRow}>
-        <TextInput
-          style={styles.addInput}
+        <NeuTextInput
           value={newItemLabel}
           onChangeText={setNewItemLabel}
           placeholder={category === 'GROCERY' ? 'Add a grocery item' : 'Add a packing item'}
           onSubmitEditing={handleAdd}
+          style={styles.addInput}
         />
-        <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-          <Text style={styles.addButtonText}>Add</Text>
-        </TouchableOpacity>
+        <NeuButton label="Add" variant="primary" onPress={handleAdd} style={styles.addButton} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  tab: { flex: 1, backgroundColor: '#f7f8fb', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#e2e2e2' },
-  tabActive: { backgroundColor: '#eef2ff', borderColor: '#2f6fed', borderWidth: 2 },
-  tabText: { fontSize: 13, fontWeight: '600', color: '#666' },
-  tabTextActive: { color: '#2f6fed' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  container: { flex: 1, padding: neuSpacing.lg, backgroundColor: neuColors.background },
+  templateSpacing: { marginTop: neuSpacing.lg },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: neuColors.shadowDark },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: '#999' },
-  checkboxChecked: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
+  checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+  checkmark: { color: neuColors.white, fontSize: 13, fontWeight: '700' },
   labelColumn: { flex: 1 },
-  label: { fontSize: 15 },
-  labelChecked: { textDecorationLine: 'line-through', color: '#999' },
-  metaText: { fontSize: 11, color: '#888', marginTop: 2 },
+  label: { fontSize: 15, color: neuColors.textPrimary },
+  labelChecked: { textDecorationLine: 'line-through', color: neuColors.textMuted },
+  metaText: { fontSize: 11, color: neuColors.textMuted, marginTop: 2 },
   badgeColumn: { alignItems: 'flex-end', gap: 4 },
-  visibilityBadge: { borderRadius: 10, paddingVertical: 2, paddingHorizontal: 8 },
-  sharedBadge: { backgroundColor: '#eef2ff' },
-  personalBadge: { backgroundColor: '#f2f2f2' },
-  sharedBadgeText: { color: '#2f6fed', fontSize: 11, fontWeight: '600' },
-  personalBadgeText: { color: '#777', fontSize: 11, fontWeight: '600' },
-  convertLink: { color: '#2f6fed', fontSize: 12, fontWeight: '600' },
-  empty: { color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
-  visibilityPickerRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  visibilityChip: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: '#ddd' },
-  visibilityChipActive: { backgroundColor: '#2f6fed', borderColor: '#2f6fed' },
-  visibilityChipText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  visibilityChipTextActive: { color: '#fff' },
-  categoryPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  categoryChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: '#ddd' },
-  categoryChipActive: { backgroundColor: '#eef2ff', borderColor: '#2f6fed' },
-  categoryChipText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  categoryChipTextActive: { color: '#2f6fed' },
-  addRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  addInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
-  addButton: { backgroundColor: '#2f6fed', borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' },
-  addButtonText: { color: '#fff', fontWeight: '700' },
+  visibilityBadge: { borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
+  sharedBadge: { backgroundColor: '#fff6e0' },
+  personalBadge: {
+    backgroundColor: neuColors.surfaceInset,
+    borderWidth: 1,
+    borderTopColor: neuColors.shadowDark,
+    borderLeftColor: neuColors.shadowDark,
+    borderBottomColor: neuColors.shadowLight,
+    borderRightColor: neuColors.shadowLight,
+  },
+  sharedBadgeText: { color: '#8a5a00', fontSize: 10, fontWeight: '700' },
+  personalBadgeText: { color: neuColors.textMuted, fontSize: 10, fontWeight: '700' },
+  convertLink: { color: neuColors.accent, fontSize: 11, fontWeight: '700' },
+  empty: { color: neuColors.textMuted, fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
+  visibilityPickerRow: { flexDirection: 'row', gap: neuSpacing.sm, marginTop: 14 },
+  pillOption: { paddingVertical: 6, paddingHorizontal: 14 },
+  pillOptionText: { fontSize: 11, fontWeight: '700', color: neuColors.textMuted },
+  pillOptionTextSelected: { color: neuColors.white },
+  categoryPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: neuSpacing.sm, marginTop: 10 },
+  pillOptionSmall: { paddingVertical: 6, paddingHorizontal: 12 },
+  pillOptionTextSmall: { fontSize: 10, fontWeight: '700', color: neuColors.textMuted },
+  addRow: { flexDirection: 'row', gap: neuSpacing.sm, marginTop: 14, alignItems: 'center' },
+  addInput: { flex: 1, marginBottom: 0 },
+  addButton: { width: 72, justifyContent: 'center' },
 });

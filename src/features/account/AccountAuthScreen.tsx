@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAccount, UsernameTakenError, InvalidCredentialsError } from '@/app/AccountContext';
 import { NetworkUnavailableError, TEST_MODE } from '@/services/api/client';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import NeuSegmentedControl from '@/components/neumorphic/NeuSegmentedControl';
+import NeuTextInput from '@/components/neumorphic/NeuTextInput';
+import NeuButton from '@/components/neumorphic/NeuButton';
+import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 type Mode = 'signup' | 'login';
+
+const MODE_OPTIONS: { key: Mode; label: string }[] = [
+  { key: 'signup', label: 'Sign up' },
+  { key: 'login', label: 'Log in' },
+];
 
 export default function AccountAuthScreen() {
   const { register, login } = useAccount();
@@ -76,31 +86,23 @@ export default function AccountAuthScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.card}>
+        <NeuCard size="lg" style={styles.card}>
           <Text style={styles.title}>RoaMate</Text>
           <Text style={styles.tagline}>{mode === 'signup' ? 'Create an account to get started' : 'Log in to your account'}</Text>
           {TEST_MODE && (
-            <Text style={styles.testModeBanner}>Test mode: tap {mode === 'signup' ? 'Create Account' : 'Log In'} to skip straight in</Text>
+            <View style={styles.testModeBanner}>
+              <Text style={styles.testModeBannerText}>
+                Test mode: tap {mode === 'signup' ? 'Create Account' : 'Log In'} to skip straight in
+              </Text>
+            </View>
           )}
 
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tab, mode === 'signup' && styles.tabActive]}
-              onPress={() => switchMode('signup')}
-            >
-              <Text style={[styles.tabLabel, mode === 'signup' && styles.tabLabelActive]}>Sign up</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, mode === 'login' && styles.tabActive]}
-              onPress={() => switchMode('login')}
-            >
-              <Text style={[styles.tabLabel, mode === 'login' && styles.tabLabelActive]}>Log in</Text>
-            </TouchableOpacity>
+          <View style={styles.tabWrap}>
+            <NeuSegmentedControl options={MODE_OPTIONS} value={mode} onChange={switchMode} />
           </View>
 
           <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
+          <NeuTextInput
             value={username}
             onChangeText={setUsername}
             placeholder="alex"
@@ -109,8 +111,7 @@ export default function AccountAuthScreen() {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
+          <NeuTextInput
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
@@ -124,44 +125,44 @@ export default function AccountAuthScreen() {
             </Text>
           ) : null}
 
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitLabel}>{mode === 'signup' ? 'Create account' : 'Log in'}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+          <NeuButton
+            label={mode === 'signup' ? 'Create account' : 'Log in'}
+            variant="primary"
+            onPress={handleSubmit}
+            loading={submitting}
+            style={styles.submitButton}
+          />
+        </NeuCard>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f8ff' },
+  container: { flex: 1, backgroundColor: neuColors.background },
   flex: { flex: 1, justifyContent: 'center' },
-  card: { marginHorizontal: 24, backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#d7e3ff' },
-  title: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
-  tagline: { fontSize: 13, color: '#666', textAlign: 'center', marginTop: 4, marginBottom: 20 },
-  testModeBanner: { fontSize: 11, color: '#b45309', backgroundColor: '#fffbeb', textAlign: 'center', paddingVertical: 6, borderRadius: 8, marginTop: -8, marginBottom: 16 },
-  tabRow: { flexDirection: 'row', backgroundColor: '#f0f3fb', borderRadius: 10, padding: 3, marginBottom: 18 },
-  tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
-  tabActive: { backgroundColor: '#fff' },
-  tabLabel: { fontSize: 13, color: '#666' },
-  tabLabelActive: { color: '#1d4ed8', fontWeight: '700' },
-  label: { fontSize: 12, color: '#666', marginBottom: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d7e3ff',
+  card: { marginHorizontal: 24, padding: 24 },
+  title: { fontSize: 22, fontWeight: '700', textAlign: 'center', color: neuColors.textPrimary },
+  tagline: { fontSize: 13, color: neuColors.textMuted, textAlign: 'center', marginTop: 4, marginBottom: 20 },
+  testModeBanner: {
+    backgroundColor: '#fff6e0',
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    marginBottom: 14,
+    paddingVertical: 7,
+    marginTop: -8,
+    marginBottom: 16,
   },
-  message: { fontSize: 12, marginBottom: 12 },
-  messageError: { color: '#b00020' },
-  messageInfo: { color: '#1d4ed8' },
-  submitButton: { backgroundColor: '#1d4ed8', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  submitLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  testModeBannerText: { fontSize: 11, color: '#8a5a00', textAlign: 'center', fontWeight: '600' },
+  tabWrap: { marginBottom: 18 },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+  message: { fontSize: 12, marginTop: 4, marginBottom: 8 },
+  messageError: { color: neuColors.danger },
+  messageInfo: { color: neuColors.accent },
+  submitButton: { marginTop: 12 },
 });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ExpenseEntryScreen from '@/features/finance/ExpenseEntryScreen';
 import ActivityDashboardScreen from '@/features/activity/ActivityDashboardScreen';
 import TripHomeScreen from '@/features/trip/TripHomeScreen';
@@ -14,6 +15,7 @@ import { useSync } from '@/sync/SyncContext';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import { useAutoOfflineMapSync } from '@/services/maps/AutoOfflineMapSync';
+import { neuColors } from '@/theme/neumorphic';
 
 // NOTE: Map, Checklist, ReviewDuplicates and FinanceSummary used to be
 // top-level routes here, reachable only from the old TripHomeScreen card
@@ -50,6 +52,128 @@ interface RemoteDestination {
   attachmentUrls?: string;
   priority?: 'REQUIRED' | 'OPTIONAL' | 'TENTATIVE';
 }
+
+interface EditDestinationRouteProps {
+  tripId: string;
+  destinationId?: string;
+  navigation: NativeStackNavigationProp<TripStackParamList, 'DestinationForm'>;
+}
+
+/**
+ * Pulled out to a real named component instead of an inline arrow function
+ * passed as <Stack.Screen>'s children (which is how this used to be
+ * written). That pattern is a documented, supported way to pass route
+ * params through to a screen - but a component defined inline, INSIDE
+ * another component's render, is a fresh function value every single time
+ * the parent (TripStack) re-renders, e.g. whenever `currentTrip`'s
+ * reference changes (TripHomeScreen's member-loading effect does this
+ * once per trip open). There's no correctness guarantee that hooks inside
+ * such a function keep their state across that kind of parent re-render,
+ * only that *this specific case* happened to work in testing - which is
+ * exactly the kind of bug that's easy to introduce and hard to reproduce
+ * on demand. Naming and hoisting it here removes that risk entirely,
+ * regardless of whether it was the actual cause of the edit screen
+ * sometimes rendering blank.
+ *
+ * Also replaces the old `if (loading) return null` with a real spinner:
+ * a silently blank screen with no spinner, no error, nothing - which is
+ * indistinguishable from "broken" - is worse than a spinner that spins
+ * for a moment. If the fetch ever fails, or the destination genuinely
+ * can't be found (e.g. it was deleted from another device in the
+ * meantime), that's now a real, visible error state with a way back,
+ * instead of an unexplained empty page.
+ */
+function EditDestinationRoute({ tripId, destinationId, navigation }: EditDestinationRouteProps) {
+  const [initialValues, setInitialValues] = useState<Partial<DestinationFormValues> | undefined>(undefined);
+  const [loading, setLoading] = useState(!!destinationId);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!destinationId) return;
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+
+    apiClient
+      .get<RemoteDestination[]>(`/api/v1/itinerary/trips/${tripId}/destinations`)
+      .then(all => {
+        if (cancelled) return;
+        const existing = all.find(d => d.id === destinationId);
+        if (!existing) {
+          setLoadError("This destination couldn't be found - it may have been removed.");
+          return;
+        }
+        setInitialValues({
+          name: existing.name,
+          address: existing.address ?? '',
+          operatingHours: existing.operatingHours ?? '',
+          targetBudgetDollars: existing.targetBudgetCents != null ? String(existing.targetBudgetCents / 100) : '',
+          attachmentUrls: existing.attachmentUrls ? existing.attachmentUrls.split(',') : [],
+          priority: existing.priority ?? 'REQUIRED',
+        });
+      })
+      .catch(err => {
+        console.warn('Failed to load destination for editing', err);
+        if (!cancelled) setLoadError('Unable to load this destination right now. Check your connection and try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationId, tripId]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={routeStyles.centered}>
+        <ActivityIndicator size="large" color={neuColors.accent} />
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <SafeAreaView style={routeStyles.centered}>
+        <Text style={routeStyles.errorText}>{loadError}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={routeStyles.backButton}>
+          <Text style={routeStyles.backButtonText}>Go back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <DestinationFormScreen
+      initialValues={initialValues}
+      onSubmit={async values => {
+        try {
+          await apiClient.post('/api/v1/itinerary/destinations', {
+            ...(destinationId ? { id: destinationId } : {}),
+            tripId,
+            ...values,
+          });
+          navigation.goBack();
+        } catch (err) {
+          console.warn('Failed to save destination', err);
+          Alert.alert("Couldn't save", 'Check your connection and try again.');
+        }
+      }}
+    />
+  );
+}
+
+const routeStyles = StyleSheet.create({
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  errorText: { fontSize: 14, color: neuColors.danger, textAlign: 'center', marginBottom: 16 },
+  backButton: { paddingVertical: 10, paddingHorizontal: 20 },
+  backButtonText: { fontSize: 14, fontWeight: '700', color: neuColors.accent },
+});
+
+const activityRouteStyles = StyleSheet.create({
+  fill: { flex: 1, backgroundColor: neuColors.background },
+});
 
 const Stack = createNativeStackNavigator<TripStackParamList>();
 
@@ -148,73 +272,29 @@ export default function TripStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="DestinationForm" options={{ title: 'Destination' }}>
-        {({ navigation, route }) => {
-          const { destinationId } = route.params;
-          const [initialValues, setInitialValues] = useState<Partial<DestinationFormValues> | undefined>(undefined);
-          const [loading, setLoading] = useState(!!destinationId);
-
-          useEffect(() => {
-            if (!destinationId) return;
-            let cancelled = false;
-            apiClient
-              .get<RemoteDestination[]>(`/api/v1/itinerary/trips/${currentTrip.tripId}/destinations`)
-              .then(all => {
-                if (cancelled) return;
-                const existing = all.find(d => d.id === destinationId);
-                if (existing) {
-                  setInitialValues({
-                    name: existing.name,
-                    address: existing.address ?? '',
-                    operatingHours: existing.operatingHours ?? '',
-                    targetBudgetDollars:
-                      existing.targetBudgetCents != null ? String(existing.targetBudgetCents / 100) : '',
-                    attachmentUrls: existing.attachmentUrls ? existing.attachmentUrls.split(',') : [],
-                    priority: existing.priority ?? 'REQUIRED',
-                  });
-                }
-              })
-              .catch(err => console.warn('Failed to load destination for editing', err))
-              .finally(() => {
-                if (!cancelled) setLoading(false);
-              });
-            return () => {
-              cancelled = true;
-            };
-          }, [destinationId]);
-
-          if (loading) {
-            return null;
-          }
-
-          return (
-            <DestinationFormScreen
-              initialValues={initialValues}
-              onSubmit={async values => {
-                try {
-                  await apiClient.post('/api/v1/itinerary/destinations', {
-                    ...(destinationId ? { id: destinationId } : {}),
-                    tripId: currentTrip.tripId,
-                    ...values,
-                  });
-                  navigation.goBack();
-                } catch (err) {
-                  console.warn('Failed to save destination', err);
-                }
-              }}
-            />
-          );
-        }}
+        {({ navigation, route }) => (
+          <EditDestinationRoute tripId={currentTrip.tripId} destinationId={route.params.destinationId} navigation={navigation} />
+        )}
       </Stack.Screen>
       <Stack.Screen name="KittyDeposit" options={{ title: 'Trip Kitty' }}>
         {() => <KittyDepositScreen tripId={currentTrip.tripId} tripMembers={currentTrip.members} currency={currentTrip.defaultCurrency} />}
       </Stack.Screen>
       <Stack.Screen name="Activity" options={{ title: 'Activity' }}>
         {({ route }) => (
-          <ActivityDashboardScreen
-            tripId={currentTrip.tripId}
-            destinationId={route.params?.destinationId}
-            destinationName={route.params?.destinationName}
-          />
+          // edges=['bottom'] only: this route already has a native-stack
+          // header (title: 'Activity'), which already reserves the top
+          // safe-area inset - a full-default SafeAreaView here would
+          // double that space up, same bug as the tab-embedded screens.
+          // The bottom edge genuinely does need covering here though,
+          // since (unlike the tab-embedded case) this screen's content can
+          // reach all the way to the physical bottom edge of the device.
+          <SafeAreaView style={activityRouteStyles.fill} edges={['bottom']}>
+            <ActivityDashboardScreen
+              tripId={currentTrip.tripId}
+              destinationId={route.params?.destinationId}
+              destinationName={route.params?.destinationName}
+            />
+          </SafeAreaView>
         )}
       </Stack.Screen>
       <Stack.Screen name="Geo" options={{ title: 'Trip Safety' }}>

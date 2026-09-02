@@ -3,6 +3,8 @@ import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import { apiClient } from '@/services/api/client';
 import { useSync } from '@/sync/SyncContext';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 type BeaconStatus = 'ARRIVED_SAFELY' | 'NEED_ASSISTANCE' | 'LOST';
 
@@ -17,7 +19,12 @@ interface Props {
   userId: string;
 }
 
-/** GEO-05: one-tap broadcast of the sender's current location + status to every trip member. */
+/**
+ * GEO-05: one-tap broadcast of the sender's current location + status to
+ * every trip member. Deliberately kept in the app's danger-red rather than
+ * the orange accent used everywhere else - this is a safety-critical
+ * action and should never be visually confusable with a routine one.
+ */
 export default function EmergencyBeacon({ tripId, userId }: Props) {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BeaconStatus>('NEED_ASSISTANCE');
@@ -62,8 +69,10 @@ export default function EmergencyBeacon({ tripId, userId }: Props) {
 
   return (
     <>
-      <TouchableOpacity style={styles.button} onPress={() => setPickerVisible(true)} disabled={sending}>
-        <Text style={styles.text}>{sending ? 'Sending…' : 'Emergency Beacon'}</Text>
+      <TouchableOpacity onPress={() => setPickerVisible(true)} disabled={sending} activeOpacity={0.85}>
+        <NeumorphicView variant="raised" radius={neuRadii.lg} backgroundColor={neuColors.danger} style={styles.button}>
+          <Text style={styles.text}>{sending ? 'Sending…' : '🚨 Emergency Beacon'}</Text>
+        </NeumorphicView>
       </TouchableOpacity>
 
       <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={() => setPickerVisible(false)}>
@@ -72,24 +81,29 @@ export default function EmergencyBeacon({ tripId, userId }: Props) {
             <Text style={styles.sheetTitle}>Raise emergency beacon?</Text>
             <Text style={styles.sheetSubtitle}>Choose what to broadcast to the group.</Text>
 
-            {STATUS_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.key}
-                style={[styles.option, selectedStatus === option.key && styles.optionSelected]}
-                onPress={() => setSelectedStatus(option.key)}
-              >
-                <Text style={[styles.optionText, selectedStatus === option.key && styles.optionTextSelected]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {STATUS_OPTIONS.map(option => {
+              const selected = selectedStatus === option.key;
+              return (
+                <TouchableOpacity key={option.key} onPress={() => setSelectedStatus(option.key)} activeOpacity={0.85}>
+                  <NeumorphicView
+                    variant="raised"
+                    radius={neuRadii.md}
+                    style={[styles.option, selected && styles.optionSelected]}
+                  >
+                    <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option.label}</Text>
+                  </NeumorphicView>
+                </TouchableOpacity>
+              );
+            })}
 
             <Text style={styles.hint}>
               Sends your current location either way. Queued for delivery if you're offline right now.
             </Text>
 
-            <TouchableOpacity style={styles.sendButton} onPress={() => sendBeacon(selectedStatus)}>
-              <Text style={styles.sendButtonText}>Send beacon</Text>
+            <TouchableOpacity onPress={() => sendBeacon(selectedStatus)} activeOpacity={0.85}>
+              <NeumorphicView variant="raised" radius={neuRadii.md} backgroundColor={neuColors.danger} style={styles.sendButton}>
+                <Text style={styles.sendButtonText}>Send beacon</Text>
+              </NeumorphicView>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setPickerVisible(false)}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -102,19 +116,24 @@ export default function EmergencyBeacon({ tripId, userId }: Props) {
 }
 
 const styles = StyleSheet.create({
-  button: { backgroundColor: '#d0342c', borderRadius: 10, padding: 14, alignItems: 'center' },
-  text: { color: '#fff', fontWeight: '700' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
-  sheetTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
-  sheetSubtitle: { fontSize: 13, color: '#666', marginBottom: 16 },
-  option: { borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 14, marginBottom: 8 },
-  optionSelected: { borderColor: '#d0342c', borderWidth: 2, backgroundColor: '#fdeceb' },
-  optionText: { fontSize: 14 },
-  optionTextSelected: { fontWeight: '700', color: '#d0342c' },
-  hint: { fontSize: 11, color: '#888', marginTop: 4, marginBottom: 16 },
-  sendButton: { backgroundColor: '#d0342c', borderRadius: 10, padding: 14, alignItems: 'center', marginBottom: 8 },
-  sendButtonText: { color: '#fff', fontWeight: '700' },
+  button: { padding: 14, alignItems: 'center' },
+  text: { color: neuColors.white, fontWeight: '700' },
+  overlay: { flex: 1, backgroundColor: 'rgba(20,22,28,0.45)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: neuColors.background,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: neuSpacing.lg,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: neuColors.textPrimary },
+  sheetSubtitle: { fontSize: 13, color: neuColors.textMuted, marginBottom: 16 },
+  option: { padding: 14, marginBottom: 8 },
+  optionSelected: { borderWidth: 2, borderColor: neuColors.danger },
+  optionText: { fontSize: 14, color: neuColors.textMuted },
+  optionTextSelected: { fontWeight: '700', color: neuColors.danger },
+  hint: { fontSize: 11, color: neuColors.textMuted, marginTop: 4, marginBottom: 16 },
+  sendButton: { padding: 14, alignItems: 'center', marginBottom: 8 },
+  sendButtonText: { color: neuColors.white, fontWeight: '700' },
   cancelButton: { padding: 10, alignItems: 'center' },
-  cancelButtonText: { color: '#666', fontWeight: '600' },
+  cancelButtonText: { color: neuColors.textMuted, fontWeight: '600' },
 });

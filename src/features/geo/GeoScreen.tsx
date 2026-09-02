@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import EmergencyBeacon from './EmergencyBeacon';
 import LocationSharingToggle from './LocationSharingToggle';
 import { getCurrentUserId } from '@/services/security/KeyManager';
+import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 interface Props {
   tripId: string;
@@ -24,25 +26,32 @@ export default function GeoScreen({ tripId }: Props) {
         <Text style={styles.description}>
           When location sharing is enabled, your device may respond to on-demand location requests while the app is open.
         </Text>
-        <LocationSharingToggle enabled={sharingEnabled} onToggle={setSharingEnabled} />
-        {userId ? <EmergencyBeacon tripId={tripId} userId={userId} /> : null}
-        <View style={styles.noteContainer}>
+        <View style={styles.spaced}>
+          <LocationSharingToggle enabled={sharingEnabled} onToggle={setSharingEnabled} />
+        </View>
+        {userId ? (
+          <View style={styles.spaced}>
+            <EmergencyBeacon tripId={tripId} userId={userId} />
+          </View>
+        ) : null}
+        <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.noteContainer}>
           <Text style={styles.noteHeader}>Note</Text>
           <Text style={styles.noteText}>
             Silent push support is not active unless the app has a Firebase configuration, so the map fetch currently falls back to the last-known location state.
           </Text>
-        </View>
+        </NeumorphicView>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16 },
-  header: { fontSize: 22, fontWeight: '700', marginBottom: 10 },
-  description: { color: '#555', marginBottom: 20 },
-  noteContainer: { marginTop: 24, padding: 16, backgroundColor: '#f5f8ff', borderRadius: 14, borderWidth: 1, borderColor: '#d7e3ff' },
-  noteHeader: { fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  noteText: { color: '#444', lineHeight: 20 },
+  container: { flex: 1, backgroundColor: neuColors.background },
+  content: { padding: neuSpacing.lg },
+  header: { fontSize: 22, fontWeight: '700', marginBottom: 10, color: neuColors.textPrimary },
+  description: { color: neuColors.textMuted, marginBottom: 20, lineHeight: 19 },
+  spaced: { marginBottom: neuSpacing.lg },
+  noteContainer: { marginTop: 8, padding: 16 },
+  noteHeader: { fontSize: 15, fontWeight: '700', marginBottom: 6, color: neuColors.textPrimary },
+  noteText: { color: neuColors.textMuted, lineHeight: 20 },
 });

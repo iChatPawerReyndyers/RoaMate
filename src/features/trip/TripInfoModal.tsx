@@ -2,6 +2,8 @@ import React from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CurrentTrip } from '@/app/TripContext';
+import NeuCard from '@/components/neumorphic/NeuCard';
+import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 interface Props {
   visible: boolean;
@@ -22,22 +24,29 @@ export default function TripInfoModal({ visible, trip, onClose }: Props) {
           <View style={styles.headerSpacer} />
         </View>
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.name}>{trip.name ?? 'Your trip'}</Text>
-          {trip.description ? (
-            <Text style={styles.description}>{trip.description}</Text>
-          ) : (
-            <Text style={styles.noDescription}>No description yet.</Text>
-          )}
+          <NeuCard size="md" style={styles.card}>
+            <Text style={styles.name}>{trip.name ?? 'Your trip'}</Text>
+            {trip.description ? (
+              <Text style={styles.description}>{trip.description}</Text>
+            ) : (
+              <Text style={styles.noDescription}>No description yet.</Text>
+            )}
 
-          <Text style={styles.sectionTitle}>
-            Members ({trip.members.length})
-          </Text>
-          {trip.members.map(member => (
-            <View key={member.id} style={styles.memberRow}>
-              <Text style={styles.memberName}>{member.displayName}</Text>
-              <Text style={styles.memberRole}>{member.role}</Text>
-            </View>
-          ))}
+            <Text style={styles.sectionTitle}>
+              Members ({trip.members.length})
+            </Text>
+            {trip.members.map((member, index) => (
+              <View
+                key={member.id}
+                style={[styles.memberRow, index > 0 && styles.memberRowDivider]}
+              >
+                <Text style={styles.memberName}>{member.displayName}</Text>
+                <View style={styles.roleBadge}>
+                  <Text style={styles.memberRole}>{member.role}</Text>
+                </View>
+              </View>
+            ))}
+          </NeuCard>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -45,32 +54,45 @@ export default function TripInfoModal({ visible, trip, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: neuColors.background },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: neuSpacing.lg,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: neuColors.shadowDark,
   },
-  closeText: { fontSize: 14, color: '#2f6fed', fontWeight: '600' },
-  headerTitle: { fontSize: 15, fontWeight: '700' },
+  closeText: { fontSize: 14, color: neuColors.accent, fontWeight: '700' },
+  headerTitle: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
   headerSpacer: { width: 44 },
-  content: { padding: 20 },
-  name: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
-  description: { fontSize: 14, color: '#333', lineHeight: 20, marginBottom: 24 },
-  noDescription: { fontSize: 14, color: '#999', fontStyle: 'italic', marginBottom: 24 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#555', marginBottom: 10 },
-  memberRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+  content: { padding: neuSpacing.lg },
+  card: { padding: 18 },
+  name: { fontSize: 22, fontWeight: '700', marginBottom: 8, color: neuColors.textPrimary },
+  description: { fontSize: 14, color: neuColors.textPrimary, lineHeight: 20, marginBottom: 24 },
+  noDescription: { fontSize: 14, color: neuColors.textMuted, fontStyle: 'italic', marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: neuColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
   },
-  memberName: { fontSize: 14, color: '#222' },
-  memberRole: { fontSize: 12, color: '#888', textTransform: 'capitalize' },
+  memberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11 },
+  memberRowDivider: { borderTopWidth: 1, borderTopColor: neuColors.shadowDark },
+  memberName: { fontSize: 14, color: neuColors.textPrimary },
+  roleBadge: {
+    backgroundColor: neuColors.surfaceInset,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1.5,
+    borderTopColor: neuColors.shadowDark,
+    borderLeftColor: neuColors.shadowDark,
+    borderBottomColor: neuColors.shadowLight,
+    borderRightColor: neuColors.shadowLight,
+  },
+  memberRole: { fontSize: 11, color: neuColors.textMuted, textTransform: 'capitalize' },
 });
