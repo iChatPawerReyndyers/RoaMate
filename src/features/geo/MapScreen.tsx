@@ -4,9 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Map, Camera, ViewAnnotation, GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import type { PressEvent } from '@maplibre/maplibre-react-native';
-import Geolocation from '@react-native-community/geolocation';
 import { apiClient } from '@/services/api/client';
-import { requestLocationPermission } from '@/services/location/requestLocationPermission';
 import { MAP_STYLE_URL, MAPTILER_API_KEY } from '@/config/mapTiles';
 import OfflineMapControl from './OfflineMapControl';
 import type { Destination, DestinationPriority } from '@/features/itinerary/ItineraryScreen';
@@ -42,10 +40,20 @@ interface Props {
 }
 
 // Map coordinates are [longitude, latitude] - the opposite order of the
-// {lat, lng} shape this app's API responses use everywhere else. Centered
-// on the Philippines as a reasonable fallback until real member locations
-// arrive and the camera reframes to them instead.
+// {lat, lng} shape this app's API responses use everywhere else.
 const DEFAULT_CENTER: [number, number] = [121.774, 12.8797];
+
+/**
+ * [west, south, east, north] - covers the Philippines end to end (Batanes
+ * in the north down to Tawi-Tawi in the south). Used as the true fallback
+ * view whenever there's nothing else to frame the camera to (no live
+ * member locations, no pinned itinerary destinations): fitBounds to this
+ * rather than a fixed center+zoom, since a single hardcoded zoom level
+ * doesn't reliably show "the whole country" across different device
+ * screen sizes and aspect ratios the way fitting to an actual bounding
+ * box does.
+ */
+const PHILIPPINES_BOUNDS: [number, number, number, number] = [116.9, 4.6, 126.6, 21.1];
 
 /**
  * GEO-01..04: opening this screen triggers the server to fan out a silent
@@ -133,44 +141,57 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
   /**
    * Coordinates this screen's several independent camera-movers so they
    * don't fight each other. Set to true the moment ANY of member-location
-   * fitBounds, itinerary-destination fitBounds/flyTo, or the device's-own-
-   * location flyTo actually moves the camera somewhere meaningful. The
-   * defensive default-center reset and the device-location effect both
-   * check this before firing and back off if it's already true - without
-   * this, the destination-fit effect below could successfully frame the
-   * itinerary pins on screen, only for the defensive reset's 300ms
-   * timeout (see below) to fire moments later and silently snap the
-   * camera back to the generic zoomed-out default, undoing it. The
-   * itinerary-destination effect itself does NOT check this ref before
-   * firing - it always wins and re-frames whenever the destination list
-   * changes, since showing the itinerary is meant to take priority over
-   * an earlier device-location centering the moment there's an itinerary
-   * to show.
+   * fitBounds or itinerary-destination fitBounds/flyTo actually moves the
+   * camera somewhere meaningful. The Philippines-fallback effect checks
+   * this before firing and backs off if it's already true - without this,
+   * the destination-fit effect below could successfully frame the
+   * itinerary pins on screen, only for the Philippines fallback to fire
+   * moments later and snap the camera back out to the whole-country view,
+   * undoing it. The itinerary-destination effect itself does NOT check
+   * this ref before firing - it always wins and re-frames whenever the
+   * destination list changes, since showing the itinerary is meant to
+   * take priority the moment there's one to show.
    */
   const hasFramedCameraRef = useRef(false);
 
   /**
-   * Defensive re-apply of the default center shortly after mount.
-   * initialViewState (see <Camera> below) is supposed to cover this on
-   * mount, but on-device testing showed the camera landing on an
-   * unrelated default position instead. Rather than guess at an event
-   * prop name for "style finished loading" that I couldn't confirm
-   * exists on this component in this SDK version, this uses flyTo -
-   * already confirmed elsewhere in this file to exist with this exact
-   * {center, duration} shape - fired on a short delay after mount as a
-   * pragmatic, verified-API-only fallback. duration: 0 makes it an
+   * Set by <Map>'s onDidFinishLoadingStyle callback (a real, confirmed
+   * prop on this component - see MapProps in the library's own source).
+   * All the fitBounds/flyTo calls in this screen are imperative commands
+   * to the native map view, and calling them before the underlying map
+   * has actually finished loading its style is a well-documented footgun
+   * with MapLibre/Mapbox-based wrappers: the native side silently drops
+   * the command instead of queuing it, so "zoom to X" just doesn't happen
+   * with no error anywhere. This was previously worked around with a bare
+   * 300ms setTimeout - fine when a real device-location GPS lookup was
+   * also in the mix (slow enough that the map had usually finished
+   * loading by the time anything tried to move the camera), but once the
+   * destinations-fit effect started firing near-instantly (mock data
+   * resolves in milliseconds), it could easily race ahead of the map
+   * actually being ready, and silently do nothing. Gating on the real
+   * "is it ready" signal instead of guessing a delay fixes that for good,
+   * regardless of how fast or slow the data happens to load.
+   */
+  const [mapReady, setMapReady] = useState(false);
+
+  /**
+   * True fallback view: the whole Philippines, whenever there's nothing
+   * more specific to show (no live member locations, no pinned itinerary
+   * destinations - see hasFramedCameraRef). Waits for mapReady rather
+   * than firing on a timer, then gives destinations/locations a brief
+   * head start (300ms) in case they're already in flight, before
+   * defaulting to the whole-country view. duration: 0 makes it an
    * instant jump, not a visible animated flight, so it just looks like
-   * the map opening in the right place. Skipped if member locations,
-   * itinerary destinations, or device location already framed the camera
-   * to something meaningful in the meantime (see hasFramedCameraRef).
+   * the map opening in the right place.
    */
   useEffect(() => {
+    if (!mapReady) return;
     const timeout = setTimeout(() => {
       if (hasFramedCameraRef.current) return;
-      cameraRef.current?.flyTo({ center: DEFAULT_CENTER, duration: 0 });
+      cameraRef.current?.fitBounds(PHILIPPINES_BOUNDS, { padding: { top: 40, right: 40, bottom: 40, left: 40 }, duration: 0 });
     }, 300);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [mapReady]);
 
   const fetchLocations = useCallback(async () => {
     setLoading(true);
@@ -178,17 +199,6 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
     try {
       const result = await apiClient.get<MemberLocation[]>(`/api/v1/geo/trips/${tripId}/locations`);
       setLocations(result);
-
-      if (result.length > 0) {
-        const lats = result.map(l => l.lat);
-        const lngs = result.map(l => l.lng);
-        const pad = 0.02;
-        cameraRef.current?.fitBounds(
-          [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad],
-          { padding: { top: 80, right: 80, bottom: 80, left: 80 }, duration: 500 },
-        );
-        hasFramedCameraRef.current = true;
-      }
     } catch (err) {
       // Previously uncaught here - any failure (expired session, offline,
       // server error) became an unhandled promise rejection since this
@@ -204,6 +214,29 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
   useEffect(() => {
     fetchLocations();
   }, [fetchLocations]);
+
+  /**
+   * Frames the camera to fit every live member location - the highest
+   * camera priority on this screen (see hasFramedCameraRef). Split out
+   * from fetchLocations itself into its own effect, reactive to
+   * [locations, mapReady], for the same reason the destinations fit is:
+   * the fetch can resolve before the native map has finished loading its
+   * style, and an imperative fitBounds call made at that point is
+   * silently dropped rather than queued (see mapReady's own comment).
+   * This way the fit reliably (re-)fires once both are true, regardless
+   * of which one happens to resolve first.
+   */
+  useEffect(() => {
+    if (!mapReady || locations.length === 0) return;
+    const lats = locations.map(l => l.lat);
+    const lngs = locations.map(l => l.lng);
+    const pad = 0.02;
+    cameraRef.current?.fitBounds(
+      [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad],
+      { padding: { top: 80, right: 80, bottom: 80, left: 80 }, duration: 500 },
+    );
+    hasFramedCameraRef.current = true;
+  }, [locations, mapReady]);
 
   const fetchDestinations = useCallback(async () => {
     try {
@@ -240,6 +273,7 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
    * instead of calling fitBounds with a zero-size box.
    */
   useEffect(() => {
+    if (!mapReady) return;
     if (locations.length > 0) return;
 
     const withCoords = destinations.filter(
@@ -264,7 +298,7 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
       { padding: { top: 80, right: 80, bottom: 80, left: 80 }, duration: 500 },
     );
     hasFramedCameraRef.current = true;
-  }, [destinations, locations.length]);
+  }, [destinations, locations.length, mapReady]);
 
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
 
@@ -341,36 +375,13 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
     onEditHandled?.();
   }, [editDestinationId, destinations, onEditHandled]);
 
-  // Best-effort: center on the device's own location first (if permission
-  // is granted), so the map doesn't sit on the generic Philippines default
-  // any longer than it has to. This runs independently of fetchLocations
-  // and just loses gracefully if it's slower or denied - member locations
-  // and itinerary destinations (see hasFramedCameraRef) both take priority
-  // over this and skip/override it, since the actual point of this screen
-  // is showing where people are and where the trip is planned to go, not
-  // where the viewer themselves happens to be standing right now.
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const granted = await requestLocationPermission();
-      if (!granted || cancelled || hasFramedCameraRef.current) return;
-
-      Geolocation.getCurrentPosition(
-        pos => {
-          if (cancelled || hasFramedCameraRef.current) return;
-          cameraRef.current?.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], duration: 500 });
-          hasFramedCameraRef.current = true;
-        },
-        err => console.warn('Could not get current location for map default', err),
-        { enableHighAccuracy: true, timeout: 5000 },
-      );
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Device's-own-location centering was here previously (best-effort,
+  // lowest-priority fallback) but was removed per explicit direction: the
+  // fallback view when there's nothing else to show should always be the
+  // whole Philippines (see PHILIPPINES_BOUNDS and the defensive-reset
+  // effect above), not wherever the viewer's own device happens to be.
+  // Member locations and itinerary destinations remain the two things
+  // that DO override the Philippines default - see hasFramedCameraRef.
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -490,6 +501,7 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
         onPress={handleMapPress}
         androidView="texture"
         attributionPosition={{ bottom: 6, right: 6 }}
+        onDidFinishLoadingStyle={() => setMapReady(true)}
       >
         <Camera ref={cameraRef} initialViewState={{ center: DEFAULT_CENTER, zoom: 5 }} />
         {routeSegments.map((segment, index) => (

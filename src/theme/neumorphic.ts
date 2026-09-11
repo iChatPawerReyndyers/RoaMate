@@ -24,8 +24,29 @@ export const neuColors = {
   surfaceInset: '#E9EDF3',
   textPrimary: '#454F68',
   textMuted: '#98A2B8',
-  accent: '#F5A623',
+  /**
+   * Was #F5A623 (orange) - changed to blue per direct request. Deliberately
+   * a brighter, more saturated blue than `info` below (#2E5FA3) so the two
+   * stay visually distinct: accent means "tap this / this is active,"
+   * info means "just a note." Since this is the single token every primary
+   * button, active tab, FAB, avatar badge, and selected pill in the app
+   * reads from, changing it here changes it everywhere at once - no
+   * per-screen edits needed. Destination pin colors (navy Required, gray
+   * Optional, purple Tentative) are intentionally separate, hardcoded
+   * hexes in MapScreen.tsx, not this token - they were kept as-is.
+   */
+  accent: '#3D7FE0',
   danger: '#E06B6B',
+  /**
+   * Informational highlight - "Shared" badges, banners, and other
+   * low-urgency callouts. Previously three separate hardcoded amber pairs
+   * (#fff6e0 / #8a5a00) scattered across ChecklistScreen, PinnedLocationCard,
+   * and AccountAuthScreen instead of one shared token - consolidated here
+   * so this can be changed once, in one place, and stays consistent
+   * everywhere it's used.
+   */
+  info: '#2E5FA3',
+  infoLight: '#E7EEF9',
   shadowDark: '#A9B4CC',
   shadowLight: '#FFFFFF',
   white: '#FFFFFF',

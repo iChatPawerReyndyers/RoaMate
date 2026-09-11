@@ -1,5 +1,5 @@
 diff --git a/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm b/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
-index 456c311..2e221d8 100644
+index 456c311..9708ad3 100644
 --- a/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
 +++ b/node_modules/@maplibre/maplibre-react-native/ios/modules/offline/MLRNOfflineModule.mm
 @@ -441,33 +441,54 @@ static const NSInteger MLRN_MIGRATION_VERSION = 1;
@@ -80,3 +80,32 @@ index 456c311..2e221d8 100644
  }
  
  /**
+@@ -603,6 +624,19 @@ static const NSInteger MLRN_MIGRATION_VERSION = 1;
+ }
+ 
+ - (NSDictionary *)_makeRegionStatusPayload:(NSString *)packId pack:(MLNOfflinePack *)pack {
++  // packId comes from this pack's unarchived context (see
++  // _unarchiveContext:'s three call sites above) and can legitimately be
++  // nil - most commonly for a legacy/unmigrated pack whose context
++  // _unarchiveContext: couldn't recover and fell back to an empty
++  // dictionary for (see that method's own comment). The @{} dictionary
++  // literal below is really a call to
++  // +[NSDictionary dictionaryWithObjects:forKeys:count:], which throws an
++  // uncaught NSException if ANY value in it is nil - packId was the one
++  // value here that was never guaranteed non-nil, and this defaults it to
++  // an empty string instead of ever passing nil through
++  // to that dictionary construction.
++  NSString *safePackId = packId ?: @"";
++
+   uint64_t completedResources = pack.progress.countOfResourcesCompleted;
+   uint64_t expectedResources = pack.progress.countOfResourcesExpected;
+ 
+@@ -612,7 +646,7 @@ static const NSInteger MLRN_MIGRATION_VERSION = 1;
+   }
+ 
+   return @{
+-    @"id" : packId,
++    @"id" : safePackId,
+     @"state" : [self _stateToString:pack.state],
+     @"percentage" : @(percentage),
+     @"completedResourceCount" : @(pack.progress.countOfResourcesCompleted),
