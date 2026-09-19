@@ -17,10 +17,12 @@ import { useTrip } from '@/app/TripContext';
 import { useSync } from '@/sync/SyncContext';
 import { ExpenseDto } from '@/db/repositories/expensesRepository';
 import ExpenseEntryScreen from './ExpenseEntryScreen';
+import KittyDepositScreen from './KittyDepositScreen';
 import ConflictReviewDashboard from './ConflictReviewDashboard';
 import SettlementSection from './SettlementSection';
 import NeuCard from '@/components/neumorphic/NeuCard';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import NeuSegmentedControl from '@/components/neumorphic/NeuSegmentedControl';
 import { NeuEmptyState } from '@/components/neumorphic/NueModal';
 import { neuColors } from '@/theme/neumorphic';
 
@@ -28,14 +30,23 @@ interface Props {
   tripId: string;
 }
 
+type AddTab = 'expense' | 'kitty';
+
+/** FIN-09: the + button's modal now covers both "log a purchase" and "log a kitty deposit" - see the modal's segmented control below. Expense stays the default tab per direct request, since it's the far more common of the two actions. */
+const ADD_TABS: { key: AddTab; label: string }[] = [
+  { key: 'expense', label: 'Expense' },
+  { key: 'kitty', label: 'Kitty' },
+];
+
 /**
- * FIN-01/05/08: the Expenses tab's main view - a scrollable list of every
+ * FIN-01/05/08/09: the Expenses tab's main view - a scrollable list of every
  * expense (duplicate-flagged ones marked with a danger-colored edge
  * stripe, since a flat border reads oddly against the neumorphic raised-
- * card language), a floating + button that opens the existing multi-payer
- * entry form in a modal instead of navigating away, and an expandable
- * "Trip settlement" section at the bottom that shows the same content as
- * the old standalone Settlement tab (see SettlementSection.tsx).
+ * card language), a floating + button that opens an Expense/Kitty tabbed
+ * modal (Expense selected by default - see ADD_TABS) instead of navigating
+ * away, and an expandable "Trip settlement" section at the bottom that
+ * shows the same content as the old standalone Settlement tab (see
+ * SettlementSection.tsx).
  * Reviewing/resolving duplicates is a different kind of action
  * (soft-deletes an expense from balances) rather than a display concern,
  * so it stays as its own modal via the "Review duplicates" link instead
@@ -46,6 +57,7 @@ export default function ExpensesHubScreen({ tripId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [addTab, setAddTab] = useState<AddTab>('expense');
   const [duplicatesModalVisible, setDuplicatesModalVisible] = useState(false);
   const [settlementExpanded, setSettlementExpanded] = useState(false);
   const { currentTrip } = useTrip();
@@ -81,7 +93,7 @@ export default function ExpensesHubScreen({ tripId }: Props) {
     description: string;
     totalAmountCents: number;
     payments: { source: 'KITTY' | 'MEMBER_ABONO'; payerUserId?: string; amountCents: number }[];
-    participantUserIds: string[];
+    participantShares: { userId: string; amountCents: number }[];
   }) => {
     const expensePayload = {
       ...payload,
@@ -170,7 +182,17 @@ export default function ExpensesHubScreen({ tripId }: Props) {
         ) : null}
       </ScrollView>
 
-      <TouchableOpacity onPress={() => setAddModalVisible(true)} style={styles.fabTouchable} activeOpacity={0.85}>
+      <TouchableOpacity
+        onPress={() => {
+          // Always reopens on the Expense tab, per direct request - the far
+          // more common of the two actions, regardless of which tab was
+          // last used.
+          setAddTab('expense');
+          setAddModalVisible(true);
+        }}
+        style={styles.fabTouchable}
+        activeOpacity={0.85}
+      >
         <NeumorphicView variant="raised" size="fab" radius={28} backgroundColor={neuColors.accent} style={styles.fab}>
           <Text style={styles.fabIcon}>+</Text>
         </NeumorphicView>
@@ -182,10 +204,21 @@ export default function ExpensesHubScreen({ tripId }: Props) {
             <TouchableOpacity onPress={() => setAddModalVisible(false)}>
               <Text style={styles.modalCancel}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Add expense</Text>
+            <Text style={styles.modalTitle}>Add</Text>
             <View style={styles.modalHeaderSpacer} />
           </View>
-          <ExpenseEntryScreen tripMembers={currentTrip?.members ?? []} onSubmit={handleSubmitExpense} />
+          <View style={styles.addTabsWrap}>
+            <NeuSegmentedControl options={ADD_TABS} value={addTab} onChange={setAddTab} />
+          </View>
+          {addTab === 'expense' ? (
+            <ExpenseEntryScreen tripMembers={currentTrip?.members ?? []} onSubmit={handleSubmitExpense} />
+          ) : (
+            <KittyDepositScreen
+              tripId={tripId}
+              tripMembers={currentTrip?.members ?? []}
+              currency={currentTrip?.defaultCurrency ?? 'USD'}
+            />
+          )}
         </SafeAreaView>
       </Modal>
 
@@ -251,4 +284,5 @@ const styles = StyleSheet.create({
   modalCancel: { fontSize: 14, color: neuColors.accent, fontWeight: '600' },
   modalTitle: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
   modalHeaderSpacer: { width: 50 },
+  addTabsWrap: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
 });

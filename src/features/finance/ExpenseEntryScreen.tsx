@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
-import { resolveFillRemainingBalance, PaymentLine } from './FillRemainingBalance';
+import { resolveEvenSplitRemaining, SplitLine } from './FillRemainingBalance';
 import NeuTextInput from '@/components/neumorphic/NeuTextInput';
 import NeuToggle from '@/components/neumorphic/NeuToggle';
 import NeuButton from '@/components/neumorphic/NeuButton';
@@ -21,7 +21,7 @@ interface Props {
     description: string;
     totalAmountCents: number;
     payments: { source: 'KITTY' | 'MEMBER_ABONO'; payerUserId?: string; amountCents: number }[];
-    participantUserIds: string[];
+    participantShares: { userId: string; amountCents: number }[];
   }) => void;
 }
 
@@ -32,21 +32,53 @@ interface PayerRow {
   payerUserId?: string;
   label: string;
   included: boolean;
-  amountDollars: string; // '' = this row auto-fills the remaining balance
+  amountDollars: string; // '' = share of whatever's left, split evenly among every other blank row
+}
+
+/** One row in the "Split between" list - one per trip member, same shape/behavior as PayerRow's amount field (see FIN-04 doc comment below). */
+interface SplitRow {
+  userId: string;
+  label: string;
+  included: boolean;
+  amountDollars: string; // '' = share of whatever's left, split evenly among every other blank row
+}
+
+/**
+ * FIN-01/04: keeps an amount field numeric-only, digits and a single
+ * decimal point, capped at 3 decimal places (one more than
+ * Cents.fromDollars actually keeps - it rounds to the nearest cent - but
+ * the field accepts the extra precision per direct request rather than
+ * silently truncating what the person typed). Shared by both the "Who
+ * paid" and "Split between" amount inputs.
+ */
+function sanitizeAmountInput(raw: string): string {
+  let cleaned = raw.replace(/[^0-9.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot !== -1) {
+    cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+    const [whole, fraction] = cleaned.split('.');
+    cleaned = fraction.length > 3 ? `${whole}.${fraction.slice(0, 3)}` : cleaned;
+  }
+  return cleaned;
 }
 
 /**
  * FIN-01..04: multi-payer Abono entry screen, matching the 7.1 mockup -
  * description + total up top, a persistent "who paid" checklist (Kitty +
- * every trip member, each independently toggleable with its own amount and
- * a live balanced/unbalanced indicator), and a "split between" checklist
- * with a Select All row showing the live per-person cost.
+ * every trip member), and a "split between" checklist - both sections now
+ * share the identical pattern: each row can be freely checked/unchecked,
+ * carries its own optional amount (left blank to auto-split whatever's
+ * left evenly with any other blank rows in that same section - see
+ * resolveEvenSplitRemaining), and a live balance banner blocks submission
+ * with a specific error until that section's amounts add up to the total.
  *
- * Previously "who paid" was an add-only list of chips with no way to
- * remove a line and no live feedback - amounts that didn't add up only
- * surfaced as a console.warn on submit, invisible to the person using the
- * app. Both are fixed here: every row can be freely checked/unchecked, and
- * the balance banner recomputes on every keystroke.
+ * "Split between" previously had no per-person amount at all - cost was
+ * always split dead-even across everyone selected, with no way to record
+ * that e.g. one person's dinner cost more than everyone else's. "Who
+ * paid" previously used the stricter resolveFillRemainingBalance, which
+ * only allowed a single blank/auto-fill line at a time; both sections now
+ * use resolveEvenSplitRemaining instead, which allows any number of blank
+ * rows and splits the remainder evenly between them.
  */
 export default function ExpenseEntryScreen({ tripMembers, initialDescription, initialPaymentSource, onSubmit }: Props) {
   const [description, setDescription] = useState(initialDescription ?? '');
@@ -64,8 +96,8 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     })),
   ]);
 
-  const [participantIds, setParticipantIds] = useState<Set<string>>(
-    new Set(tripMembers.map(m => m.userId)),
+  const [splitRows, setSplitRows] = useState<SplitRow[]>(() =>
+    tripMembers.map(m => ({ userId: m.userId, label: m.displayName, included: true, amountDollars: '' })),
   );
 
   const totalCents = useMemo(() => {
@@ -85,59 +117,102 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     setPayerRows(prev => prev.map(row => (row.key === key ? { ...row, amountDollars: '' } : row)));
   };
 
-  const toggleParticipant = (userId: string) => {
-    setParticipantIds(prev => {
-      const next = new Set(prev);
-      next.has(userId) ? next.delete(userId) : next.add(userId);
-      return next;
-    });
+  const toggleSplitIncluded = (userId: string) => {
+    setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, included: !row.included } : row)));
   };
 
-  const allSelected = participantIds.size === tripMembers.length && tripMembers.length > 0;
+  const updateSplitAmount = (userId: string, dollars: string) => {
+    setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, amountDollars: dollars } : row)));
+  };
+
+  const clearSplitAmount = (userId: string) => {
+    setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, amountDollars: '' } : row)));
+  };
+
+  const allSelected = splitRows.length > 0 && splitRows.every(r => r.included);
   const toggleSelectAll = () => {
-    setParticipantIds(allSelected ? new Set() : new Set(tripMembers.map(m => m.userId)));
+    setSplitRows(prev => prev.map(row => ({ ...row, included: !allSelected })));
   };
 
-  const includedLines = useMemo<PaymentLine[]>(
+  const includedPayerLines = useMemo<SplitLine[]>(
     () =>
       payerRows
         .filter(r => r.included)
         .map(r => ({
-          source: r.source,
-          payerUserId: r.payerUserId,
+          key: r.key,
           amountCents: r.amountDollars === '' ? null : Cents.fromDollars(parseFloat(r.amountDollars) || 0),
         })),
     [payerRows],
   );
 
-  /** Live "Total paid / Total bill" balance - recomputed on every keystroke, matching the mockup's inline validation rather than only checking on submit. */
-  const balance = useMemo(() => {
-    if (includedLines.length === 0) {
+  /** Live "Who paid" balance - recomputed on every keystroke, matching the mockup's inline validation rather than only checking on submit. */
+  const payerBalance = useMemo(() => {
+    if (includedPayerLines.length === 0) {
       return { status: 'empty' as const, message: 'Select who paid' };
     }
-    try {
-      const resolved = resolveFillRemainingBalance(totalCents, includedLines);
-      const paidCents = resolved.reduce((sum, l) => Cents.add(sum, l.amountCents), Cents.of(0));
-      return { status: 'balanced' as const, message: `Total paid ${Cents.formatPlain(paidCents)} / bill ${Cents.formatPlain(totalCents)} — balanced`, resolved };
-    } catch (err: any) {
-      return { status: 'error' as const, message: err.message as string };
-    }
-  }, [includedLines, totalCents]);
+    return resolveEvenSplitRemaining(totalCents, includedPayerLines);
+  }, [includedPayerLines, totalCents]);
 
-  const perPersonCents = participantIds.size > 0 ? Cents.of(Math.round(totalCents / participantIds.size)) : Cents.of(0);
+  const payments = useMemo(() => {
+    if (payerBalance.status !== 'balanced' || !payerBalance.resolvedById) return null;
+    const resolvedById = payerBalance.resolvedById;
+    return payerRows
+      .filter(r => r.included)
+      .map(r => ({ source: r.source, payerUserId: r.payerUserId, amountCents: resolvedById.get(r.key) as Cents }));
+  }, [payerBalance, payerRows]);
+
+  const includedSplitLines = useMemo<SplitLine[]>(
+    () =>
+      splitRows
+        .filter(r => r.included)
+        .map(r => ({
+          key: r.userId,
+          amountCents: r.amountDollars === '' ? null : Cents.fromDollars(parseFloat(r.amountDollars) || 0),
+        })),
+    [splitRows],
+  );
+
+  /** Live "Split between" balance - same shape/behavior as payerBalance above. */
+  const splitBalance = useMemo(() => {
+    if (includedSplitLines.length === 0) {
+      return { status: 'empty' as const, message: 'Select who this expense is split between' };
+    }
+    return resolveEvenSplitRemaining(totalCents, includedSplitLines);
+  }, [includedSplitLines, totalCents]);
+
+  const participantShares = useMemo(() => {
+    if (splitBalance.status !== 'balanced' || !splitBalance.resolvedById) return null;
+    const resolvedById = splitBalance.resolvedById;
+    return splitRows
+      .filter(r => r.included)
+      .map(r => ({ userId: r.userId, amountCents: resolvedById.get(r.userId) as Cents }));
+  }, [splitBalance, splitRows]);
 
   const handleSubmit = () => {
     if (!description.trim()) return;
-    if (balance.status !== 'balanced') return; // banner already explains why - nothing further to surface here
-    if (participantIds.size === 0) return;
+    if (!payments) return; // banner already explains why - nothing further to surface here
+    if (!participantShares) return; // same for the split-between banner
 
     onSubmit({
       description,
       totalAmountCents: totalCents,
-      payments: balance.resolved,
-      participantUserIds: Array.from(participantIds),
+      payments,
+      participantShares,
     });
   };
+
+  const renderBalanceBanner = (balance: { status: 'empty' | 'balanced' | 'error'; message: string }) => (
+    <View
+      style={[
+        styles.balanceBanner,
+        balance.status === 'balanced' ? styles.balanceBannerOk : balance.status === 'error' ? styles.balanceBannerError : styles.balanceBannerNeutral,
+      ]}
+    >
+      <Text style={balance.status === 'balanced' ? styles.balanceTextOk : balance.status === 'error' ? styles.balanceTextError : styles.balanceTextNeutral}>
+        {balance.message}
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -158,18 +233,18 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
           <View key={row.key} style={styles.payerRow}>
             <View style={styles.payerCheckboxLabel}>
               <NeuToggle value={row.included} onValueChange={() => toggleIncluded(row.key)} />
-              <TouchableOpacity onPress={() => toggleIncluded(row.key)}>
-                <Text style={styles.payerLabel}>{row.label}</Text>
+              <TouchableOpacity style={styles.payerLabelTouchable} onPress={() => toggleIncluded(row.key)}>
+                <Text style={styles.payerLabel} numberOfLines={1}>{row.label}</Text>
               </TouchableOpacity>
             </View>
             {row.included && (
               <View style={styles.payerAmountGroup}>
                 <NeuTextInput
                   style={styles.amountInput}
-                  placeholder="fill remaining"
+                  placeholder="0.000"
                   keyboardType="decimal-pad"
                   value={row.amountDollars}
-                  onChangeText={v => updateAmount(row.key, v)}
+                  onChangeText={v => updateAmount(row.key, sanitizeAmountInput(v))}
                 />
                 <TouchableOpacity onPress={() => fillRemaining(row.key)}>
                   <Text style={styles.fillRestButton}>Fill rest</Text>
@@ -179,11 +254,7 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
           </View>
         ))}
 
-        <View style={[styles.balanceBanner, balance.status === 'balanced' ? styles.balanceBannerOk : balance.status === 'error' ? styles.balanceBannerError : styles.balanceBannerNeutral]}>
-          <Text style={balance.status === 'balanced' ? styles.balanceTextOk : balance.status === 'error' ? styles.balanceTextError : styles.balanceTextNeutral}>
-            {balance.message}
-          </Text>
-        </View>
+        {renderBalanceBanner(payerBalance)}
 
         <View style={styles.splitHeaderRow}>
           <Text style={styles.splitHeaderText}>Split between</Text>
@@ -194,17 +265,32 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
             </TouchableOpacity>
           </View>
         </View>
-        {participantIds.size > 0 && (
-          <Text style={styles.perPersonHint}>
-            {participantIds.size} member{participantIds.size === 1 ? '' : 's'} — {Cents.formatPlain(perPersonCents)} each
-          </Text>
-        )}
-        {tripMembers.map(m => (
-          <View key={m.userId} style={styles.participantRow}>
-            <Text style={styles.participantName}>{m.displayName}</Text>
-            <NeuToggle value={participantIds.has(m.userId)} onValueChange={() => toggleParticipant(m.userId)} />
+        {splitRows.map(row => (
+          <View key={row.userId} style={styles.payerRow}>
+            <View style={styles.payerCheckboxLabel}>
+              <NeuToggle value={row.included} onValueChange={() => toggleSplitIncluded(row.userId)} />
+              <TouchableOpacity style={styles.payerLabelTouchable} onPress={() => toggleSplitIncluded(row.userId)}>
+                <Text style={styles.payerLabel} numberOfLines={1}>{row.label}</Text>
+              </TouchableOpacity>
+            </View>
+            {row.included && (
+              <View style={styles.payerAmountGroup}>
+                <NeuTextInput
+                  style={styles.amountInput}
+                  placeholder="0.000"
+                  keyboardType="decimal-pad"
+                  value={row.amountDollars}
+                  onChangeText={v => updateSplitAmount(row.userId, sanitizeAmountInput(v))}
+                />
+                <TouchableOpacity onPress={() => clearSplitAmount(row.userId)}>
+                  <Text style={styles.fillRestButton}>Fill rest</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         ))}
+
+        {renderBalanceBanner(splitBalance)}
 
         <NeuButton label="Save Expense" onPress={handleSubmit} style={styles.submitButton} />
       </ScrollView>
@@ -217,11 +303,18 @@ const styles = StyleSheet.create({
   scroll: { padding: 16 },
   label: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary, marginTop: 12, marginBottom: 4 },
   sectionHeader: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary, marginTop: 20, marginBottom: 8 },
-  payerRow: { paddingVertical: 8 },
-  payerCheckboxLabel: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  payerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  payerCheckboxLabel: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1, minWidth: 0 },
+  payerLabelTouchable: { flexShrink: 1, minWidth: 0 },
   payerLabel: { fontSize: 14, color: neuColors.textPrimary },
-  payerAmountGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, marginLeft: 52, marginBottom: 4 },
-  amountInput: { width: 130 },
+  payerAmountGroup: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  amountInput: { width: 84 },
   fillRestButton: { color: neuColors.accent, fontSize: 12, fontWeight: '600' },
   balanceBanner: { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 10, borderRadius: 8 },
   balanceBannerOk: { backgroundColor: '#DDF0E1' },
@@ -234,8 +327,5 @@ const styles = StyleSheet.create({
   splitHeaderText: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
   selectAllRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   selectAllLabel: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary },
-  perPersonHint: { fontSize: 12, color: neuColors.textMuted, marginBottom: 8 },
-  participantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  participantName: { color: neuColors.textPrimary },
   submitButton: { marginTop: 24, marginBottom: 40 },
 });

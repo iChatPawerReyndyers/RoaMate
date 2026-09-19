@@ -34,10 +34,24 @@ interface Props {
   lng?: number;
   attachmentUrls?: string;
   priority?: DestinationPriority;
+  /**
+   * ACT-05: set once "Finish activity at this stop" has been tapped on the
+   * Activity Dashboard for this destination (see hasFinishedActivity
+   * below for why metrics are gated on this rather than on session
+   * existence).
+   */
+  activityCompletedAt?: string;
   onAddNote: () => void;
   onStartActivity: () => void;
   onEdit: () => void;
   onRemove: () => void;
+  /**
+   * ITIN-05: opens the Map tab with a real, road-following route from the
+   * viewer's current device location to this destination (see MapScreen's
+   * directionsDestinationId prop). Only rendered when the destination has
+   * coordinates - there's nothing to route to otherwise.
+   */
+  onGetDirections?: () => void;
 }
 
 /**
@@ -54,10 +68,12 @@ export default function PinnedLocationCard({
   lng,
   attachmentUrls,
   priority = 'REQUIRED',
+  activityCompletedAt,
   onAddNote,
   onStartActivity,
   onEdit,
   onRemove,
+  onGetDirections,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState<LocationNote[]>([]);
@@ -87,7 +103,16 @@ export default function PinnedLocationCard({
   }, [loadNotes, loadSummary]);
 
   const attachments = attachmentUrls ? attachmentUrls.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const hasMetrics = summary && summary.sessionCount > 0;
+  // ACT-05: sessionCount alone isn't "done here" - a pedometer batch
+  // uploads every ~12s the Activity screen is open, and an elevation
+  // session uploads as soon as tracking is stopped, both well before the
+  // traveler has actually finished at this stop. Metrics only render once
+  // activityCompletedAt is set (via the Activity Dashboard's "Finish
+  // activity" button, or the auto-detect prompt's "Finish at X"), even if
+  // sessions already exist for this destination.
+  const hasFinishedActivity = !!activityCompletedAt;
+  const hasSessions = summary && summary.sessionCount > 0;
+  const hasMetrics = hasFinishedActivity && hasSessions;
 
   return (
     <NeuCard size="md" style={styles.card}>
@@ -99,6 +124,19 @@ export default function PinnedLocationCard({
           ) : null}
         </View>
         <View style={styles.iconActions}>
+          {onGetDirections && lat !== undefined && lng !== undefined ? (
+            <TouchableOpacity onPress={onGetDirections} hitSlop={8}>
+              <NeumorphicView
+                variant="raised"
+                size="sm"
+                radius={9}
+                backgroundColor={neuColors.accent}
+                style={styles.iconButton}
+              >
+                <Text style={[styles.iconButtonText, styles.iconButtonOnAccent]}>🧭</Text>
+              </NeumorphicView>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={onEdit} hitSlop={8}>
             <NeumorphicView variant="raised" size="sm" radius={9} style={styles.iconButton}>
               <Text style={styles.iconButtonText}>✎</Text>
@@ -151,10 +189,17 @@ export default function PinnedLocationCard({
                   <Text style={styles.metricLabel}>Steps</Text>
                 </NeumorphicView>
               </View>
-              <NeuButton label="▶ Start activity here" variant="primary" onPress={onStartActivity} style={styles.startButton} />
+              <NeuButton label="▶ Track another session here" variant="primary" onPress={onStartActivity} style={styles.startButton} />
             </View>
           ) : (
             <View style={styles.section}>
+              {hasSessions ? (
+                <View style={styles.inProgressBanner}>
+                  <Text style={styles.inProgressText}>
+                    ⏱️ Activity in progress — metrics show once you finish here
+                  </Text>
+                </View>
+              ) : null}
               <NeuButton label="▶ Start activity here" variant="primary" onPress={onStartActivity} />
             </View>
           )}
@@ -185,6 +230,7 @@ const styles = StyleSheet.create({
   iconButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   iconButtonText: { fontSize: 14, color: neuColors.textPrimary },
   iconButtonDanger: { color: neuColors.danger },
+  iconButtonOnAccent: { color: neuColors.white },
   expandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
   chevron: { fontSize: 14, color: neuColors.textMuted },
   priorityBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
@@ -200,5 +246,7 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 15, fontWeight: '700', color: neuColors.textPrimary },
   metricLabel: { fontSize: 11, color: neuColors.textMuted, marginTop: 2 },
   startButton: { marginTop: 0 },
+  inProgressBanner: { backgroundColor: '#fff6e0', borderRadius: 8, padding: 10, marginBottom: 10 },
+  inProgressText: { fontSize: 12, color: '#8a5a00', fontWeight: '500' },
   attachmentsButtonText: { fontSize: 13, fontWeight: '600', color: neuColors.accent, textAlign: 'center' },
 });

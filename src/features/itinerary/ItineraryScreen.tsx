@@ -21,6 +21,8 @@ export interface Destination {
   lng?: number;
   attachmentUrls?: string;
   priority?: DestinationPriority;
+  /** ACT-05: null/undefined until "Finish activity at this stop" is tapped - see PinnedLocationCard's doc comment on hasFinishedActivity. */
+  activityCompletedAt?: string;
 }
 
 interface Props {
@@ -31,6 +33,8 @@ interface Props {
   onAddDestination: () => void;
   onEditDestination: (destinationId: string) => void;
   onRemoveDestination: (destinationId: string, destinationName: string) => void;
+  /** ITIN-05: opens the Map tab with directions from the viewer's current location to this destination. */
+  onGetDirections: (destinationId: string) => void;
 }
 
 const ROW_HEIGHT = 210; // approximate rendered height of one PinnedLocationCard row, used to convert drag distance into index deltas
@@ -50,6 +54,7 @@ export default function ItineraryScreen({
   onAddDestination,
   onEditDestination,
   onRemoveDestination,
+  onGetDirections,
 }: Props) {
   const byDay = useMemo(() => groupByDay(destinations), [destinations]);
 
@@ -88,6 +93,7 @@ export default function ItineraryScreen({
             onStartActivity={onStartActivity}
             onEditDestination={onEditDestination}
             onRemoveDestination={onRemoveDestination}
+            onGetDirections={onGetDirections}
           />
         ))}
       </ScrollView>
@@ -108,6 +114,7 @@ function DaySection({
   onStartActivity,
   onEditDestination,
   onRemoveDestination,
+  onGetDirections,
 }: {
   day: string;
   stops: Destination[];
@@ -116,6 +123,7 @@ function DaySection({
   onStartActivity: (destinationId: string, destinationName: string) => void;
   onEditDestination: (destinationId: string) => void;
   onRemoveDestination: (destinationId: string, destinationName: string) => void;
+  onGetDirections: (destinationId: string) => void;
 }) {
   const [order, setOrder] = useState(stops.map(s => s.id));
   const stopsById = useMemo(() => new Map(stops.map(s => [s.id, s])), [stops]);
@@ -148,10 +156,12 @@ function DaySection({
             lng={stop.lng}
             attachmentUrls={stop.attachmentUrls}
             priority={stop.priority}
+            activityCompletedAt={stop.activityCompletedAt}
             onAddNote={() => onOpenNotes(stop.id, stop.name)}
             onStartActivity={() => onStartActivity(stop.id, stop.name)}
             onEdit={() => onEditDestination(stop.id)}
             onRemove={() => onRemoveDestination(stop.id, stop.name)}
+            onGetDirections={() => onGetDirections(stop.id)}
           />
         );
 

@@ -13,9 +13,11 @@ interface Props {
   tripId: string;
   /** Called instead of navigating to the full DestinationForm screen when "Edit" is tapped - see ItineraryHubScreen. */
   onRequestEditOnMap: (destinationId: string) => void;
+  /** ITIN-05: called when "Get directions" is tapped on a card - see ItineraryHubScreen. */
+  onRequestDirectionsOnMap: (destinationId: string) => void;
 }
 
-export default function ItineraryContainer({ tripId, onRequestEditOnMap }: Props) {
+export default function ItineraryContainer({ tripId, onRequestEditOnMap, onRequestDirectionsOnMap }: Props) {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,13 +126,30 @@ export default function ItineraryContainer({ tripId, onRequestEditOnMap }: Props
           navigation.navigate('DestinationNotes', { destinationId, destinationName });
         }}
         onStartActivity={(destinationId, destinationName) => {
-          navigation.navigate('Activity', { destinationId, destinationName });
+          // ACT-05: hand the Activity screen this destination's own
+          // coordinates plus every other stop's, straight from this
+          // already-loaded `destinations` state - not a fresh API call -
+          // so its "looks like you've moved on" auto-detect prompt works
+          // fully offline. See TripStack's Activity route type for why.
+          const current = destinations.find(d => d.id === destinationId);
+          const otherDestinations = destinations
+            .filter((d): d is typeof d & { lat: number; lng: number } => d.id !== destinationId && d.lat !== undefined && d.lng !== undefined)
+            .map(d => ({ id: d.id, name: d.name, lat: d.lat, lng: d.lng }));
+
+          navigation.navigate('Activity', {
+            destinationId,
+            destinationName,
+            destinationLat: current?.lat,
+            destinationLng: current?.lng,
+            otherDestinations,
+          });
         }}
         onAddDestination={() => {
           navigation.navigate('DestinationForm', { tripId });
         }}
         onEditDestination={onRequestEditOnMap}
         onRemoveDestination={handleRemove}
+        onGetDirections={onRequestDirectionsOnMap}
       />
       <NeuConfirmModal
         visible={pendingRemoval !== null}

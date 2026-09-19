@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapScreen from '@/features/geo/MapScreen';
-import ActivityDashboardScreen from '@/features/activity/ActivityDashboardScreen';
 import ItineraryContainer from './ItineraryContainer';
 import NeuSegmentedControl from '@/components/neumorphic/NeuSegmentedControl';
 import { neuColors, neuSpacing } from '@/theme/neumorphic';
@@ -10,12 +9,11 @@ interface Props {
   tripId: string;
 }
 
-type SubView = 'map' | 'itinerary' | 'activity';
+type SubView = 'map' | 'itinerary';
 
 const SUB_VIEWS: { key: SubView; label: string }[] = [
   { key: 'map', label: 'Map' },
   { key: 'itinerary', label: 'Itinerary' },
-  { key: 'activity', label: 'Activity' },
 ];
 
 /**
@@ -35,6 +33,11 @@ export default function ItineraryHubScreen({ tripId }: Props) {
   // focused on that pin) instead of a separate full-screen form. See
   // MapScreen's own comment on editDestinationId for how it's consumed.
   const [focusDestinationId, setFocusDestinationId] = useState<string | null>(null);
+  // ITIN-05: set when a card's "Get directions" button is tapped on the
+  // Itinerary tab - switches to the Map tab and tells MapScreen to route
+  // from the viewer's current location to this destination. Mirrors
+  // focusDestinationId's edit-request pattern above.
+  const [directionsDestinationId, setDirectionsDestinationId] = useState<string | null>(null);
 
   return (
     <View style={styles.container}>
@@ -43,7 +46,13 @@ export default function ItineraryHubScreen({ tripId }: Props) {
       </View>
       <View style={styles.content}>
         {activeView === 'map' ? (
-          <MapScreen tripId={tripId} editDestinationId={focusDestinationId} onEditHandled={() => setFocusDestinationId(null)} />
+          <MapScreen
+            tripId={tripId}
+            editDestinationId={focusDestinationId}
+            onEditHandled={() => setFocusDestinationId(null)}
+            directionsDestinationId={directionsDestinationId}
+            onDirectionsHandled={() => setDirectionsDestinationId(null)}
+          />
         ) : null}
         {activeView === 'itinerary' ? (
           <ItineraryContainer
@@ -52,9 +61,12 @@ export default function ItineraryHubScreen({ tripId }: Props) {
               setFocusDestinationId(destinationId);
               setActiveView('map');
             }}
+            onRequestDirectionsOnMap={destinationId => {
+              setDirectionsDestinationId(destinationId);
+              setActiveView('map');
+            }}
           />
         ) : null}
-        {activeView === 'activity' ? <ActivityDashboardScreen tripId={tripId} /> : null}
       </View>
     </View>
   );

@@ -12,7 +12,11 @@ interface Props {
 }
 
 export default function GeoScreen({ tripId }: Props) {
-  const [sharingEnabled, setSharingEnabled] = useState(false);
+  // Defaults to on, per direct request - was previously off-by-default
+  // (opt-in). Still a per-session, in-memory value only (see
+  // LocationSharingToggle's own doc comment) - this just changes the
+  // starting position each time Safety Hub mounts, not persisted sharing.
+  const [sharingEnabled, setSharingEnabled] = useState(true);
   const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {

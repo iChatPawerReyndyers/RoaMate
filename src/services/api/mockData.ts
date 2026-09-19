@@ -154,6 +154,21 @@ const routes: MockRoute[] = [
       return undefined;
     },
   },
+  // ACT-05: "Finish activity at this stop" - mirrors the real
+  // PATCH .../activity-complete endpoint closely enough for clicking
+  // through the flow with no backend running.
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/v1\/itinerary\/destinations\/([^/]+)\/activity-complete$/,
+    handler: m => {
+      const destinationId = m[1] ?? '';
+      const index = destinationsStore.findIndex(d => d.id === destinationId);
+      if (index === -1) return undefined;
+      const updated: MockRecord = { ...destinationsStore[index], activityCompletedAt: new Date().toISOString() };
+      destinationsStore = [...destinationsStore.slice(0, index), updated, ...destinationsStore.slice(index + 1)];
+      return updated;
+    },
+  },
 
   // --- Destination notes: backed by notesStore, keyed by destination id ---
   {

@@ -197,6 +197,8 @@ export const apiClient = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  /** ACT-05: added for "Finish activity at this stop" (PATCH .../activity-complete) - every other verb here already had a caller, this one didn't yet. */
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
   download: async (path: string): Promise<ArrayBuffer> => {
     const token = await getAuthToken();

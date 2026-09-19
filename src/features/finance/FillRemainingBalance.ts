@@ -47,3 +47,70 @@ export function resolveFillRemainingBalance(
       : { source: l.source, payerUserId: l.payerUserId, amountCents: l.amountCents as Cents },
   );
 }
+
+/** One line going into resolveEvenSplitRemaining - deliberately just a `key` rather than PaymentLine's source/payerUserId shape, since this is shared by both "Who paid" (keyed by payer) and "Split between" (keyed by participant userId), which have different identifying fields. */
+export interface SplitLine {
+  key: string;
+  amountCents: Cents | null; // null = share of whatever's left, split evenly among every other null line
+}
+
+export interface SplitResult {
+  status: 'balanced' | 'error';
+  message: string;
+  /** Present only when status is 'balanced' - every line's resolved (never-null) amount, keyed the same as the input. */
+  resolvedById?: Map<string, Cents>;
+}
+
+/**
+ * FIN-03/04 (custom split): generalizes resolveFillRemainingBalance above
+ * to allow ANY number of blank lines, not just one - each blank line gets
+ * an equal share of whatever's left after the explicit lines, using
+ * Cents.splitEvenlyRemainderToRecipient's assign-the-odd-cent-to-one-line
+ * math (since a remainder can't always divide evenly). Used for both the
+ * "Who paid" and "Split between" sections in ExpenseEntryScreen - the
+ * older one-blank-only resolveFillRemainingBalance is kept as-is (and
+ * still covered by its own tests) rather than modified in place, since
+ * its stricter contract is still the right one for at least one other
+ * call site by that name; this is a new, separate function instead.
+ */
+export function resolveEvenSplitRemaining(total: Cents, lines: SplitLine[]): SplitResult {
+  const explicitLines = lines.filter(l => l.amountCents !== null);
+  const blankLines = lines.filter(l => l.amountCents === null);
+  const explicitSum = explicitLines.reduce((sum, l) => Cents.add(sum, l.amountCents as Cents), Cents.of(0));
+
+  if (blankLines.length === 0) {
+    const diff = (total as number) - (explicitSum as number);
+    if (diff !== 0) {
+      const diffText = Cents.formatPlain(Cents.of(Math.abs(diff)));
+      const message =
+        diff > 0
+          ? `Amounts total ${Cents.formatPlain(explicitSum)}, ${diffText} short of ${Cents.formatPlain(total)}. Fill in the missing amount.`
+          : `Amounts total ${Cents.formatPlain(explicitSum)}, ${diffText} more than ${Cents.formatPlain(total)}. Adjust an amount.`;
+      return { status: 'error', message };
+    }
+    return {
+      status: 'balanced',
+      message: `Total ${Cents.formatPlain(total)} — balanced`,
+      resolvedById: new Map(lines.map(l => [l.key, l.amountCents as Cents])),
+    };
+  }
+
+  const remaining = (total as number) - (explicitSum as number);
+  if (remaining < 0) {
+    return {
+      status: 'error',
+      message: `Entered amounts already total ${Cents.formatPlain(explicitSum)}, more than ${Cents.formatPlain(total)}.`,
+    };
+  }
+
+  const shares = Cents.splitEvenlyRemainderToRecipient(Cents.of(remaining), blankLines.length, 0);
+  const resolvedById = new Map<string, Cents>();
+  explicitLines.forEach(l => resolvedById.set(l.key, l.amountCents as Cents));
+  blankLines.forEach((l, i) => resolvedById.set(l.key, shares[i]));
+
+  return {
+    status: 'balanced',
+    message: `Total ${Cents.formatPlain(total)} — balanced (${blankLines.length} auto-split)`,
+    resolvedById,
+  };
+}

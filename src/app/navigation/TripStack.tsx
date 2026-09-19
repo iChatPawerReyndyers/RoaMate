@@ -36,7 +36,23 @@ export type TripStackParamList = {
       }
     | undefined;
   SelectPaymentSource: { itemId: string; description: string };
-  Activity: { destinationId?: string; destinationName?: string } | undefined;
+  Activity:
+    | {
+        destinationId?: string;
+        destinationName?: string;
+        /**
+         * ACT-05: this destination's own coordinates plus every other
+         * itinerary stop's, passed straight from ItineraryContainer's
+         * already-in-memory `destinations` state (not re-fetched here) so
+         * the "looks like you've moved on" auto-detect prompt works fully
+         * offline - see ActivityDashboardScreen's doc comment on why this
+         * can't just call the API again.
+         */
+        destinationLat?: number;
+        destinationLng?: number;
+        otherDestinations?: { id: string; name: string; lat: number; lng: number }[];
+      }
+    | undefined;
   DestinationNotes: { destinationId: string; destinationName: string };
   DestinationForm: { tripId: string; destinationId?: string };
   KittyDeposit: undefined;
@@ -293,6 +309,9 @@ export default function TripStack() {
               tripId={currentTrip.tripId}
               destinationId={route.params?.destinationId}
               destinationName={route.params?.destinationName}
+              destinationLat={route.params?.destinationLat}
+              destinationLng={route.params?.destinationLng}
+              otherDestinations={route.params?.otherDestinations}
             />
           </SafeAreaView>
         )}

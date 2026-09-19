@@ -4,7 +4,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Map, Camera, ViewAnnotation, GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import type { PressEvent } from '@maplibre/maplibre-react-native';
+import Geolocation from '@react-native-community/geolocation';
 import { apiClient } from '@/services/api/client';
+import { requestLocationPermission } from '@/services/location/requestLocationPermission';
 import { MAP_STYLE_URL, MAPTILER_API_KEY } from '@/config/mapTiles';
 import OfflineMapControl from './OfflineMapControl';
 import type { Destination, DestinationPriority } from '@/features/itinerary/ItineraryScreen';
@@ -37,6 +39,16 @@ interface Props {
    */
   editDestinationId?: string | null;
   onEditHandled?: () => void;
+  /**
+   * ITIN-05: set by ItineraryHubScreen when "Get directions" is tapped on a
+   * destination card in the Itinerary tab. Consumed the same way
+   * editDestinationId is (see that prop's comment and the effect below):
+   * once a route from the viewer's current location to this destination
+   * has been kicked off, this screen calls onDirectionsHandled so the hub
+   * can clear it.
+   */
+  directionsDestinationId?: string | null;
+  onDirectionsHandled?: () => void;
 }
 
 // Map coordinates are [longitude, latitude] - the opposite order of the
@@ -98,7 +110,13 @@ const PHILIPPINES_BOUNDS: [number, number, number, number] = [116.9, 4.6, 126.6,
  * draft-pin card) picks up the app's neumorphic surface, so it reads as
  * part of the same app rather than a generic maps SDK overlay.
  */
-export default function MapScreen({ tripId, editDestinationId, onEditHandled }: Props) {
+export default function MapScreen({
+  tripId,
+  editDestinationId,
+  onEditHandled,
+  directionsDestinationId,
+  onDirectionsHandled,
+}: Props) {
   const [locations, setLocations] = useState<MemberLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -375,6 +393,108 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
     onEditHandled?.();
   }, [editDestinationId, destinations, onEditHandled]);
 
+  // ITIN-05: "Get directions" state - a real, road-following route (same
+  // OSRM approach as the itinerary-to-itinerary segments below) from the
+  // viewer's own current device location to one tapped destination.
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [directionsTarget, setDirectionsTarget] = useState<Destination | null>(null);
+  const [directionsRoute, setDirectionsRoute] = useState<DirectionsRoute | null>(null);
+  const [directionsStatus, setDirectionsStatus] = useState<'idle' | 'locating' | 'routing' | 'ready' | 'error'>('idle');
+  const [directionsErrorMessage, setDirectionsErrorMessage] = useState<string | null>(null);
+
+  // Guards against re-kicking the whole locate-then-route flow every time
+  // this effect's other dependency (`destinations`) changes reference -
+  // which happens on every focus (see fetchDestinations' useFocusEffect)
+  // even when the list's content hasn't meaningfully changed. Without
+  // this, a destinations refetch landing mid-flow would restart the
+  // location lookup from scratch. Reset back to null once
+  // directionsDestinationId itself clears (see the effect right below),
+  // so tapping the same destination's directions button again later still
+  // starts a fresh request.
+  const directionsRequestRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (directionsDestinationId === null || directionsDestinationId === undefined) {
+      directionsRequestRef.current = null;
+    }
+  }, [directionsDestinationId]);
+
+  useEffect(() => {
+    if (!directionsDestinationId) return;
+    if (directionsRequestRef.current === directionsDestinationId) return;
+
+    const target = destinations.find(d => d.id === directionsDestinationId);
+    if (!target || target.lat === undefined || target.lng === undefined) return;
+    const targetLat = target.lat;
+    const targetLng = target.lng;
+
+    directionsRequestRef.current = directionsDestinationId;
+    setDirectionsTarget(target);
+    setDirectionsRoute(null);
+    setMyLocation(null);
+    setDirectionsErrorMessage(null);
+    setDirectionsStatus('locating');
+    // Consumed immediately, same as editDestinationId above - the rest of
+    // this flow (permission -> GPS fix -> routing) runs independently of
+    // whether the hub has cleared its own state yet.
+    onDirectionsHandled?.();
+
+    (async () => {
+      const hasPermission = await requestLocationPermission();
+      if (!isMountedRef.current) return;
+      if (!hasPermission) {
+        setDirectionsStatus('error');
+        setDirectionsErrorMessage('Location permission is needed to show directions.');
+        return;
+      }
+
+      Geolocation.getCurrentPosition(
+        pos => {
+          if (!isMountedRef.current) return;
+          const from = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setMyLocation(from);
+          setDirectionsStatus('routing');
+
+          fetchDirectionsRoute(from, { lat: targetLat, lng: targetLng }).then(route => {
+            if (!isMountedRef.current) return;
+            setDirectionsRoute(route);
+            setDirectionsStatus('ready');
+
+            const lats = [from.lat, targetLat];
+            const lngs = [from.lng, targetLng];
+            const pad = 0.02;
+            cameraRef.current?.fitBounds(
+              [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad],
+              { padding: { top: 80, right: 80, bottom: 180, left: 80 }, duration: 600 },
+            );
+            hasFramedCameraRef.current = true;
+          });
+        },
+        () => {
+          if (!isMountedRef.current) return;
+          setDirectionsStatus('error');
+          setDirectionsErrorMessage("Couldn't get your current location. Check your device's location settings.");
+        },
+        { enableHighAccuracy: true, timeout: 8000 },
+      );
+    })();
+  }, [directionsDestinationId, destinations, onDirectionsHandled]);
+
+  const clearDirections = useCallback(() => {
+    directionsRequestRef.current = null;
+    setDirectionsTarget(null);
+    setDirectionsRoute(null);
+    setMyLocation(null);
+    setDirectionsStatus('idle');
+    setDirectionsErrorMessage(null);
+  }, []);
+
   // Device's-own-location centering was here previously (best-effort,
   // lowest-priority fallback) but was removed per explicit direction: the
   // fallback view when there's nothing else to show should always be the
@@ -534,6 +654,43 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
             </ViewAnnotation>
           </React.Fragment>
         ))}
+        {directionsRoute ? (
+          <GeoJSONSource
+            id="directions-route-source"
+            data={{ type: 'Feature', properties: {}, geometry: directionsRoute.geometry }}
+          >
+            <Layer
+              id="directions-route-line"
+              type="line"
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+              paint={
+                directionsRoute.isEstimate
+                  ? { 'line-color': '#185FA5', 'line-width': 3, 'line-dasharray': [2, 2] }
+                  : { 'line-color': '#185FA5', 'line-width': 4 }
+              }
+            />
+          </GeoJSONSource>
+        ) : null}
+        {directionsRoute ? (
+          <ViewAnnotation id="directions-route-label" lngLat={directionsRoute.midpoint}>
+            <View style={styles.routeLabelWrap}>
+              <Text style={styles.routeLabelText}>
+                {formatDuration(directionsRoute.durationSeconds)} · {formatDistanceKm(directionsRoute.distanceMeters)}
+                {directionsRoute.isEstimate ? ' (est.)' : ''}
+              </Text>
+            </View>
+          </ViewAnnotation>
+        ) : null}
+        {myLocation ? (
+          <ViewAnnotation id="my-location" lngLat={[myLocation.lng, myLocation.lat]}>
+            <View style={styles.markerWrap}>
+              <View style={[styles.pin, styles.pinMyLocation]} />
+              <Text style={styles.markerLabel} numberOfLines={1}>
+                You are here
+              </Text>
+            </View>
+          </ViewAnnotation>
+        ) : null}
         {draftPin ? (
           <ViewAnnotation key="draft-pin" id="draft-pin" lngLat={[draftPin.lng, draftPin.lat]}>
             <View style={styles.markerWrap}>
@@ -725,6 +882,38 @@ export default function MapScreen({ tripId, editDestinationId, onEditHandled }: 
           <Text style={styles.pinSavedText}>{pinSavedMessage}</Text>
         </View>
       ) : null}
+
+      {directionsTarget ? (
+        <View style={styles.directionsBanner}>
+          <View style={styles.directionsBannerTextWrap}>
+            <Text style={styles.directionsBannerTitle} numberOfLines={1}>
+              Directions to {directionsTarget.name}
+            </Text>
+            {directionsStatus === 'locating' ? (
+              <Text style={styles.directionsBannerSubtitle}>Finding your location…</Text>
+            ) : null}
+            {directionsStatus === 'routing' ? (
+              <Text style={styles.directionsBannerSubtitle}>Getting directions…</Text>
+            ) : null}
+            {directionsStatus === 'error' ? (
+              <Text style={styles.directionsBannerSubtitle}>{directionsErrorMessage}</Text>
+            ) : null}
+            {directionsStatus === 'ready' && directionsRoute ? (
+              <Text style={styles.directionsBannerSubtitle}>
+                {formatDuration(directionsRoute.durationSeconds)} · {formatDistanceKm(directionsRoute.distanceMeters)}
+                {directionsRoute.isEstimate ? ' (est.)' : ''}
+              </Text>
+            ) : null}
+          </View>
+          {directionsStatus === 'locating' || directionsStatus === 'routing' ? (
+            <ActivityIndicator size="small" color={neuColors.white} />
+          ) : (
+            <TouchableOpacity onPress={clearDirections} hitSlop={8}>
+              <Text style={styles.directionsBannerClose}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -810,6 +999,58 @@ async function fetchRouteSegment(
   }
 }
 
+/** ITIN-05: "my location -> one destination" route, kept separate from RouteSegment above since one endpoint isn't a saved Destination (it's the viewer's live GPS fix). */
+interface DirectionsRoute {
+  geometry: GeoJSON.LineString;
+  distanceMeters: number;
+  durationSeconds: number;
+  midpoint: [number, number];
+  isEstimate: boolean;
+}
+
+/**
+ * Same OSRM demo endpoint and fail-soft-to-straight-line approach as
+ * fetchRouteSegment below (see OSRM_ROUTE_URL's comment) - kept as its own
+ * function rather than sharing one with fetchRouteSegment since the two
+ * inputs shapes differ (plain {lat,lng} here vs a full Destination there,
+ * which fetchRouteSegment's fallback also stamps with fromId/toId).
+ */
+async function fetchDirectionsRoute(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): Promise<DirectionsRoute> {
+  try {
+    const url = `${OSRM_ROUTE_URL}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Routing request failed (${response.status})`);
+    const data = await response.json();
+    const route = data?.routes?.[0];
+    const geometry = route?.geometry;
+    if (!geometry || typeof route.distance !== 'number' || typeof route.duration !== 'number') {
+      throw new Error('Unexpected routing response shape');
+    }
+
+    return {
+      geometry,
+      distanceMeters: route.distance,
+      durationSeconds: route.duration,
+      midpoint: midpointOfCoordinates(geometry.coordinates),
+      isEstimate: false,
+    };
+  } catch (err) {
+    console.warn('Failed to fetch road route to current-location target, using straight-line estimate', err);
+    const distanceMeters = haversineDistanceMeters(from, to);
+    const durationSeconds = (distanceMeters / 1000 / ESTIMATED_AVERAGE_SPEED_KMH) * 3600;
+    return {
+      geometry: { type: 'LineString', coordinates: [[from.lng, from.lat], [to.lng, to.lat]] },
+      distanceMeters,
+      durationSeconds,
+      midpoint: [(from.lng + to.lng) / 2, (from.lat + to.lat) / 2],
+      isEstimate: true,
+    };
+  }
+}
+
 function midpointOfCoordinates(coordinates: number[][]): [number, number] {
   const mid = coordinates[Math.floor(coordinates.length / 2)];
   return mid ? [mid[0] ?? 0, mid[1] ?? 0] : [0, 0];
@@ -889,6 +1130,7 @@ const styles = StyleSheet.create({
   pin: { width: 16, height: 16, borderRadius: 8, backgroundColor: neuColors.accent, borderWidth: 2, borderColor: '#fff' },
   pinStale: { backgroundColor: '#999' },
   pinDraft: { backgroundColor: neuColors.danger },
+  pinMyLocation: { backgroundColor: '#378ADD', width: 18, height: 18, borderRadius: 9, borderWidth: 3 },
   destinationPin: { width: 22, height: 22, borderRadius: 11 },
   destinationPinRequired: { backgroundColor: '#1B2A4A', borderWidth: 2.5, borderColor: '#fff' },
   destinationPinOptional: { backgroundColor: '#8891A5', borderWidth: 2.5, borderColor: '#fff' },
@@ -947,4 +1189,24 @@ const styles = StyleSheet.create({
   draftSaveButtonText: { color: neuColors.white, fontWeight: '700', fontSize: 13 },
   pinSavedBanner: { position: 'absolute', bottom: 20, alignSelf: 'center', backgroundColor: '#1e7e34', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, maxWidth: '85%' },
   pinSavedText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  // Same semi-transparent dark pill treatment as the other transient
+  // banners on this screen (see loadingBanner's own comment) - floats
+  // over live map tiles of unpredictable color.
+  directionsBanner: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 20,
+    backgroundColor: '#0009',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  directionsBannerTextWrap: { flex: 1 },
+  directionsBannerTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  directionsBannerSubtitle: { color: '#fff', fontSize: 11, marginTop: 2 },
+  directionsBannerClose: { color: '#fff', fontSize: 16, paddingHorizontal: 4 },
 });

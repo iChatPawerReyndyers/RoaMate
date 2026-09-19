@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Geolocation from '@react-native-community/geolocation';
 import { getCurrentUserId } from '@/services/security/KeyManager';
+import { apiClient, NetworkUnavailableError } from '@/services/api/client';
+import { useSync } from '@/sync/SyncContext';
+import { TripStackParamList } from '@/app/navigation/TripStack';
 import { ElevationTracker } from './ElevationTracker';
 import { PedometerService } from './PedometerService';
 import NeuTextInput from '@/components/neumorphic/NeuTextInput';
@@ -12,17 +18,65 @@ interface Props {
   tripId: string;
   destinationId?: string;
   destinationName?: string;
+  /**
+   * ACT-05: this destination's own coordinates, and every other itinerary
+   * stop's - both passed straight from ItineraryContainer's already-loaded
+   * state (see TripStack's Activity route type), not fetched here. Powers
+   * the "looks like you've moved on" auto-detect prompt below entirely
+   * from data already on-device, so it works with no network at all.
+   */
+  destinationLat?: number;
+  destinationLng?: number;
+  otherDestinations?: { id: string; name: string; lat: number; lng: number }[];
 }
 
 const QUICK_STEPS = [100, 500, 1000];
 
-export default function ActivityDashboardScreen({ tripId, destinationId, destinationName }: Props) {
+/** ACT-05: how far from the tracked stop before we suspect the traveler has moved on. Generous enough to allow wandering around the stop itself without false-triggering. */
+const DEPARTURE_THRESHOLD_METERS = 300;
+/** ACT-05: how long "Keep tracking" suppresses the prompt before it can fire again. */
+const SNOOZE_DURATION_MS = 10 * 60 * 1000;
+/** Coarse geofence, not turn-by-turn navigation - infrequent low-accuracy fixes are plenty and easier on the battery. */
+const DEPARTURE_CHECK_DISTANCE_FILTER_METERS = 50;
+
+/** Same formula as MapScreen's haversineDistanceMeters - kept as its own copy rather than a shared import, consistent with how that module already duplicates this rather than reaching across features for one formula. */
+function haversineDistanceMeters(from: { lat: number; lng: number }, to: { lat: number; lng: number }): number {
+  const EARTH_RADIUS_METERS = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(to.lat - from.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export default function ActivityDashboardScreen({
+  tripId,
+  destinationId,
+  destinationName,
+  destinationLat,
+  destinationLng,
+  otherDestinations,
+}: Props) {
   const [userId, setUserId] = useState<string>('');
   const [stepCountText, setStepCountText] = useState('100');
   const [status, setStatus] = useState<string>('');
   const [tracking, setTracking] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [movedOnPrompt, setMovedOnPrompt] = useState<{ nearestName: string | null; distanceMeters: number } | null>(null);
   const pedometerRef = useRef<PedometerService | null>(null);
   const elevationRef = useRef<ElevationTracker | null>(null);
+  const departureWatchId = useRef<number | null>(null);
+  const snoozedUntilRef = useRef<number>(0);
+  const isMountedRef = useRef(true);
+  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Activity'>>();
+  const syncManager = useSync();
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     getCurrentUserId().then(setUserId).catch(err => console.warn('Failed to resolve current user id', err));
@@ -40,6 +94,54 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
       elevationRef.current?.stop();
     };
   }, [tripId, userId, destinationId]);
+
+  // ACT-05: foreground-only "looks like you've moved on" auto-detect - see
+  // this component's Props doc comment for why it doesn't need a network
+  // call, and the "true background tracking" alternative that was
+  // considered and deliberately deferred (only runs while this screen is
+  // open, same as the rest of this screen's tracking - see SyncManager's
+  // doc comment on the app's existing no-background-tracking stance).
+  useEffect(() => {
+    if (!destinationId || destinationLat === undefined || destinationLng === undefined) return;
+
+    const watchId = Geolocation.watchPosition(
+      pos => {
+        if (!isMountedRef.current) return;
+        if (Date.now() < snoozedUntilRef.current) return;
+
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const distanceFromTracked = haversineDistanceMeters(here, { lat: destinationLat, lng: destinationLng });
+        if (distanceFromTracked < DEPARTURE_THRESHOLD_METERS) {
+          setMovedOnPrompt(null);
+          return;
+        }
+
+        let nearestName: string | null = null;
+        let nearestDistance = Infinity;
+        for (const other of otherDestinations ?? []) {
+          const d = haversineDistanceMeters(here, other);
+          if (d < nearestDistance) {
+            nearestDistance = d;
+            nearestName = other.name;
+          }
+        }
+        // Only worth naming the other stop if it's genuinely closer than
+        // the one being tracked - otherwise just report the plain
+        // distance from here rather than implying a specific destination.
+        const nameToShow = nearestName && nearestDistance < distanceFromTracked ? nearestName : null;
+
+        setMovedOnPrompt({ nearestName: nameToShow, distanceMeters: distanceFromTracked });
+      },
+      err => console.warn('Departure-detection location watch failed', err),
+      { enableHighAccuracy: false, distanceFilter: DEPARTURE_CHECK_DISTANCE_FILTER_METERS },
+    );
+    departureWatchId.current = watchId;
+
+    return () => {
+      Geolocation.clearWatch(watchId);
+      departureWatchId.current = null;
+    };
+  }, [destinationId, destinationLat, destinationLng, otherDestinations]);
 
   const recordSteps = () => {
     const parsed = parseInt(stepCountText, 10);
@@ -93,6 +195,58 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
     setStatus(`Queued ${count} steps for upload.`);
   };
 
+  /**
+   * ACT-05: stops any tracking still in flight (auto-uploading an active
+   * elevation session rather than discarding it), marks this destination's
+   * activity as complete, and heads back to the Itinerary tab - which
+   * re-fetches on focus (see ItineraryContainer's useFocusEffect) and will
+   * now show this stop's metrics. If the mark-complete call can't reach
+   * the server, it's queued the same way every other offline mutation in
+   * this app is (see SyncManager) and applied once connectivity returns.
+   */
+  const finishActivity = async () => {
+    if (!destinationId) return;
+    setFinishing(true);
+    setMovedOnPrompt(null);
+
+    try {
+      if (tracking && elevationRef.current) {
+        try {
+          await elevationRef.current.stopAndUpload();
+        } catch (err) {
+          console.warn('Failed to upload elevation session while finishing activity', err);
+        }
+        setTracking(false);
+        elevationRef.current = null;
+      }
+      pedometerRef.current?.stop();
+
+      try {
+        await apiClient.patch(`/api/v1/itinerary/destinations/${destinationId}/activity-complete`);
+      } catch (err) {
+        if (err instanceof NetworkUnavailableError) {
+          await syncManager.enqueueEvent({
+            tripId,
+            eventType: 'DESTINATION_ACTIVITY_COMPLETED',
+            clientTimestamp: Date.now(),
+            payloadJson: JSON.stringify({ destinationId }),
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      navigation.goBack();
+    } catch (err) {
+      console.warn('Failed to finish activity', err);
+      if (isMountedRef.current) {
+        setStatus("Couldn't finish activity here. Check your connection and try again.");
+      }
+    } finally {
+      if (isMountedRef.current) setFinishing(false);
+    }
+  };
+
   // Deliberately a plain View, not SafeAreaView: this screen is rendered
   // in two different navigation contexts - nested inside ItineraryHubScreen's
   // Activity tab (where TripHomeScreen's SafeAreaView already covers the
@@ -113,6 +267,35 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
         <Text style={styles.description}>
           Log steps manually or use the elevation tracker for mountain/hike activity. Step batches upload periodically while the screen is open.
         </Text>
+
+        {movedOnPrompt ? (
+          <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.movedOnBanner}>
+            <Text style={styles.movedOnTitle}>📍 Looks like you've moved on</Text>
+            <Text style={styles.movedOnBody}>
+              {movedOnPrompt.nearestName
+                ? `You're about ${Math.round(movedOnPrompt.distanceMeters)}m from ${destinationName ?? 'this stop'} and closer to ${movedOnPrompt.nearestName} now. Want to finish tracking your activity there?`
+                : `You're about ${Math.round(movedOnPrompt.distanceMeters)}m from ${destinationName ?? 'this stop'} now. Want to finish tracking your activity there?`}
+            </Text>
+            <View style={styles.movedOnActions}>
+              <TouchableOpacity style={styles.movedOnActionFlex} onPress={finishActivity} disabled={finishing}>
+                <NeumorphicView variant="raised" radius={neuRadii.md} backgroundColor="#1e7e34" style={styles.movedOnFinishButton}>
+                  <Text style={styles.movedOnFinishText}>Finish at {destinationName ?? 'this stop'}</Text>
+                </NeumorphicView>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.movedOnActionFlex}
+                onPress={() => {
+                  snoozedUntilRef.current = Date.now() + SNOOZE_DURATION_MS;
+                  setMovedOnPrompt(null);
+                }}
+              >
+                <NeumorphicView variant="raised" radius={neuRadii.md} style={styles.movedOnKeepButton}>
+                  <Text style={styles.movedOnKeepText}>Keep tracking</Text>
+                </NeumorphicView>
+              </TouchableOpacity>
+            </View>
+          </NeumorphicView>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Manual Step Entry</Text>
@@ -164,6 +347,29 @@ export default function ActivityDashboardScreen({ tripId, destinationId, destina
           </TouchableOpacity>
         </View>
 
+        {destinationId ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Done here?</Text>
+            <TouchableOpacity disabled={finishing} onPress={finishActivity}>
+              <NeumorphicView
+                variant="raised"
+                radius={neuRadii.lg}
+                backgroundColor={finishing ? neuColors.surfaceInset : '#1e7e34'}
+                style={styles.elevationButton}
+              >
+                {finishing ? (
+                  <ActivityIndicator size="small" color={neuColors.textMuted} />
+                ) : (
+                  <Text style={styles.finishButtonText}>✓ Finish activity at this stop</Text>
+                )}
+              </NeumorphicView>
+            </TouchableOpacity>
+            <Text style={styles.finishHint}>
+              Stops tracking, saves the session, and unlocks metrics on the itinerary card.
+            </Text>
+          </View>
+        ) : null}
+
         <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.statusBox}>
           <Text style={styles.statusTitle}>Status</Text>
           <Text style={styles.statusText}>{status}</Text>
@@ -190,7 +396,18 @@ const styles = StyleSheet.create({
   elevationButton: { padding: 14, alignItems: 'center', marginBottom: 10 },
   elevationButtonText: { color: neuColors.white, fontWeight: '700' },
   elevationButtonTextDisabled: { color: neuColors.textMuted },
+  finishButtonText: { color: neuColors.white, fontWeight: '700' },
+  finishHint: { fontSize: 11, color: neuColors.textMuted, marginTop: 2, textAlign: 'center' },
   statusBox: { padding: 16 },
   statusTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8, color: neuColors.textPrimary },
   statusText: { color: neuColors.textMuted },
+  movedOnBanner: { padding: 14, marginBottom: 20 },
+  movedOnTitle: { fontSize: 14, fontWeight: '700', color: neuColors.textPrimary, marginBottom: 6 },
+  movedOnBody: { fontSize: 12, color: neuColors.textMuted, lineHeight: 17, marginBottom: 12 },
+  movedOnActions: { flexDirection: 'row', gap: 8 },
+  movedOnActionFlex: { flex: 1 },
+  movedOnFinishButton: { paddingVertical: 10, alignItems: 'center' },
+  movedOnFinishText: { fontSize: 13, fontWeight: '700', color: neuColors.white, textAlign: 'center' },
+  movedOnKeepButton: { paddingVertical: 10, alignItems: 'center' },
+  movedOnKeepText: { fontSize: 13, fontWeight: '600', color: neuColors.textPrimary },
 });
