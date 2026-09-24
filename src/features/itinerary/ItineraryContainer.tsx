@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { apiClient, ApiError } from '@/services/api/client';
@@ -8,6 +9,7 @@ import ItineraryScreen, { Destination } from './ItineraryScreen';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import { NeuConfirmModal } from '@/components/neumorphic/NueModal';
 import { neuColors } from '@/theme/neumorphic';
+import { cacheDestinationsFromServer, getCachedLocalDestinations } from '@/db/repositories/destinationsRepository';
 
 interface Props {
   tripId: string;
@@ -21,12 +23,25 @@ export default function ItineraryContainer({ tripId, onRequestEditOnMap, onReque
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Offline-first: true whenever what's on screen came from the local
+  // cache rather than a fresh fetch (see loadDestinations below).
+  const [isOffline, setIsOffline] = useState(false);
+  const database = useDatabase();
   // Rendered inside the Itinerary tab (see TripTabs.tsx > ItineraryHubScreen),
   // so the nearest stack ancestor is the 'Home' screen that hosts the tabs.
   const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
   const syncManager = useSync();
   const [pendingRemoval, setPendingRemoval] = useState<{ id: string; name: string } | null>(null);
 
+  /**
+   * Offline-first: tries the network first (the source of truth, and the
+   * only way to pick up another member's changes), and on any failure -
+   * no connection, a timeout, a 5xx - falls back to whatever the last
+   * successful fetch cached locally (see destinationsRepository.ts)
+   * instead of showing an empty list or an error. The error screen is
+   * reserved for the one case caching can't help with: no connection AND
+   * nothing has ever been cached (a fresh install's very first load).
+   */
   const loadDestinations = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -34,13 +49,28 @@ export default function ItineraryContainer({ tripId, onRequestEditOnMap, onReque
     try {
       const result = await apiClient.get<Destination[]>(`/api/v1/itinerary/trips/${tripId}/destinations`);
       setDestinations(result);
+      setIsOffline(false);
+      cacheDestinationsFromServer(database, tripId, result).catch(err =>
+        console.warn('Failed to cache itinerary destinations for offline use', err),
+      );
     } catch (err) {
-      console.warn('Failed to load itinerary destinations', err);
-      setError('Unable to load itinerary at this time.');
+      console.warn('Failed to load itinerary destinations, falling back to local cache', err);
+      try {
+        const cached = await getCachedLocalDestinations(database, tripId);
+        if (cached.length > 0) {
+          setDestinations(cached);
+          setIsOffline(true);
+        } else {
+          setError('Unable to load itinerary at this time.');
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to read cached itinerary destinations', cacheErr);
+        setError('Unable to load itinerary at this time.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   // DestinationForm is pushed on top of the Home screen (which hosts this
   // tab) and pops back to it after saving - Home itself never remounts, so
@@ -119,6 +149,11 @@ export default function ItineraryContainer({ tripId, onRequestEditOnMap, onReque
 
   return (
     <>
+      {isOffline ? (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>You're offline - showing your last saved itinerary.</Text>
+        </View>
+      ) : null}
       <ItineraryScreen
         destinations={destinations}
         onReorder={handleReorder}
@@ -168,4 +203,6 @@ export default function ItineraryContainer({ tripId, onRequestEditOnMap, onReque
 const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: neuColors.background },
   error: { color: neuColors.danger, textAlign: 'center' },
+  offlineBanner: { backgroundColor: neuColors.info, paddingVertical: 6, paddingHorizontal: 16, alignItems: 'center' },
+  offlineBannerText: { color: neuColors.white, fontSize: 12 },
 });

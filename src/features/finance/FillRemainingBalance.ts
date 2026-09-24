@@ -106,11 +106,29 @@ export function resolveEvenSplitRemaining(total: Cents, lines: SplitLine[]): Spl
   const shares = Cents.splitEvenlyRemainderToRecipient(Cents.of(remaining), blankLines.length, 0);
   const resolvedById = new Map<string, Cents>();
   explicitLines.forEach(l => resolvedById.set(l.key, l.amountCents as Cents));
-  blankLines.forEach((l, i) => resolvedById.set(l.key, shares[i]));
+  blankLines.forEach((l, i) => resolvedById.set(l.key, shares[i] as Cents)); // shares.length === blankLines.length by construction
 
   return {
     status: 'balanced',
     message: `Total ${Cents.formatPlain(total)} — balanced (${blankLines.length} auto-split)`,
     resolvedById,
   };
+}
+
+/**
+ * FIN-03 "Fill Rest" shortcut: how much is still unaccounted for once every
+ * OTHER line's explicit amount is subtracted from the total. Used to put a
+ * concrete number into the tapped line's field, so the person sees the
+ * value instead of an empty box that only gets resolved behind the scenes.
+ *
+ * Other blank lines count as 0 here - once this line has an explicit value
+ * they share whatever is left (which is nothing), so the section balances.
+ * Never returns a negative amount: if the other lines already exceed the
+ * total, the result is 0 and the balance banner keeps showing the overage.
+ */
+export function computeFillRestAmount(total: Cents, lines: SplitLine[], targetKey: string): Cents {
+  const othersSum = lines
+    .filter(l => l.key !== targetKey && l.amountCents !== null)
+    .reduce((sum, l) => sum + (l.amountCents as number), 0);
+  return Cents.of(Math.max(0, (total as number) - othersSum));
 }

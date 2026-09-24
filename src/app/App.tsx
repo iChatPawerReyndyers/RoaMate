@@ -11,6 +11,7 @@ import { AccountProvider } from '@/app/AccountContext';
 import { TripProvider } from '@/app/TripContext';
 import SessionGuard from '@/app/SessionGuard';
 import RootNavigator from '@/app/navigation/RootNavigator';
+import { warmUpBackend } from '@/services/api/client';
 
 /**
  * The actual app root. This file previously contained a stray copy of
@@ -73,6 +74,19 @@ function useSyncTriggers(syncManager: SyncManager | null) {
 export default function App() {
   const [database, setDatabase] = useState<Database | null>(null);
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
+
+  // Wake the (free-tier) backend now, and again whenever the app comes back
+  // to the foreground, so its slow cold start overlaps with the splash /
+  // sign-in screen rather than the person's first real request.
+  useEffect(() => {
+    warmUpBackend();
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        warmUpBackend();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

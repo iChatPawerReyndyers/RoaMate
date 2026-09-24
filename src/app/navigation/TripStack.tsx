@@ -7,6 +7,7 @@ import ActivityDashboardScreen from '@/features/activity/ActivityDashboardScreen
 import TripHomeScreen from '@/features/trip/TripHomeScreen';
 import DestinationNotesScreen from '@/features/itinerary/DestinationNotesScreen';
 import DestinationFormScreen, { DestinationFormValues } from '@/features/itinerary/DestinationFormScreen';
+import { minutesToHoursField } from '@/features/itinerary/stayDuration';
 import PaymentSourceScreen from '@/features/checklists/PaymentSourceScreen';
 import KittyDepositScreen from '@/features/finance/KittyDepositScreen';
 import GeoScreen from '@/features/geo/GeoScreen';
@@ -67,6 +68,9 @@ interface RemoteDestination {
   targetBudgetCents?: number;
   attachmentUrls?: string;
   priority?: 'REQUIRED' | 'OPTIONAL' | 'TENTATIVE';
+  assignedDay?: string | null;
+  notes?: string | null;
+  plannedDurationMinutes?: number | null;
 }
 
 interface EditDestinationRouteProps {
@@ -101,6 +105,8 @@ interface EditDestinationRouteProps {
  */
 function EditDestinationRoute({ tripId, destinationId, navigation }: EditDestinationRouteProps) {
   const [initialValues, setInitialValues] = useState<Partial<DestinationFormValues> | undefined>(undefined);
+  // The server overwrites every field on save, and this form has no Notes field - keep the stop's existing notes and send them back untouched.
+  const [existingNotes, setExistingNotes] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!destinationId);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -126,7 +132,10 @@ function EditDestinationRoute({ tripId, destinationId, navigation }: EditDestina
           targetBudgetDollars: existing.targetBudgetCents != null ? String(existing.targetBudgetCents / 100) : '',
           attachmentUrls: existing.attachmentUrls ? existing.attachmentUrls.split(',') : [],
           priority: existing.priority ?? 'REQUIRED',
+          assignedDay: existing.assignedDay ?? null,
+          plannedDurationHours: minutesToHoursField(existing.plannedDurationMinutes),
         });
+        setExistingNotes(existing.notes ?? null);
       })
       .catch(err => {
         console.warn('Failed to load destination for editing', err);
@@ -169,6 +178,7 @@ function EditDestinationRoute({ tripId, destinationId, navigation }: EditDestina
             ...(destinationId ? { id: destinationId } : {}),
             tripId,
             ...values,
+            ...(destinationId ? { notes: existingNotes } : {}),
           });
           navigation.goBack();
         } catch (err) {

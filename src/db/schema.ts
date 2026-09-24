@@ -7,7 +7,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
  * than requiring translation logic.
  */
 export default appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'trips',
@@ -89,6 +89,12 @@ export default appSchema({
         { name: 'operating_hours', type: 'string', isOptional: true },
         { name: 'target_budget_cents', type: 'number', isOptional: true },
         { name: 'attachment_urls', type: 'string', isOptional: true },
+        // v3: cached alongside the fields above so the itinerary can be read
+        // (and the map can still show pins) with no connection - see
+        // db/repositories/destinationsRepository.ts.
+        { name: 'priority', type: 'string', isOptional: true },
+        { name: 'planned_duration_minutes', type: 'number', isOptional: true },
+        { name: 'activity_completed_at', type: 'string', isOptional: true },
         { name: 'synced', type: 'boolean' },
       ],
     }),

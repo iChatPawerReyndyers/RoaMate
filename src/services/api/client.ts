@@ -7,7 +7,7 @@ import { resolveMockResponse } from '@/services/api/mockData';
  * backend running - flip to false to go back to always hitting the real
  * API.
  */
-export const USE_MOCK_DATA_WHEN_OFFLINE = true;
+export const USE_MOCK_DATA_WHEN_OFFLINE = false;
 
 /**
  * __DEV__ alone doesn't cover every "this is still just me testing"
@@ -60,7 +60,21 @@ export const FORCE_MOCK_ONLY = true;
  * not handled here, since it varies per network.
  */
 const DEV_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-const BASE_URL = __DEV__ ? `http://${DEV_HOST}:8080` : 'https://api.roamate.app';
+
+/** The backend deployed on Render (Singapore), running against the Neon database. Swap for a custom domain later if you add one. */
+const DEPLOYED_BACKEND_URL = 'https://roamate-backend-exfs.onrender.com';
+
+/**
+ * true  = debug builds talk to the deployed backend too. This is what you
+ *         want on a physical phone, where `localhost` / `10.0.2.2` can't
+ *         reach a backend running on your computer anyway.
+ * false = debug builds use a backend you run yourself on port 8080
+ *         (`./mvnw spring-boot:run`). Release builds ALWAYS use the
+ *         deployed backend, whatever this says.
+ */
+const USE_DEPLOYED_BACKEND_IN_DEV = true;
+
+const BASE_URL = USE_DEPLOYED_BACKEND_IN_DEV || !__DEV__ ? DEPLOYED_BACKEND_URL : `http://${DEV_HOST}:8080`;
 
 /**
  * Thrown when the request never reached the server at all (device is
@@ -120,7 +134,36 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 // Aborting after 5s keeps the mock-data fallback (see USE_MOCK_DATA_
 // WHEN_OFFLINE above) feeling instant on either platform instead of the
 // app appearing to hang.
-const FETCH_TIMEOUT_MS = 5000;
+//
+// Mock mode keeps the short 5s timeout for exactly that reason. Against the
+// real deployed backend it has to be much longer: Render's free tier spins
+// the service down when idle, and the first request after that has to wait
+// for the whole Spring Boot app to start again. Measured in Render's logs:
+// "Started RoaMateApplication in 155.1 seconds" - so anything under ~3
+// minutes turns a normal wake-up into a false "you're offline". 4 minutes
+// leaves headroom. (A paid Render instance, or pinging the backend every
+// ~10 minutes so it never sleeps, makes this wait a non-issue.)
+const FETCH_TIMEOUT_MS = TEST_MODE ? 5000 : 240000;
+
+/**
+ * Wakes the deployed backend up. Render's free tier spins the service down
+ * after ~15 minutes idle, and the first request afterwards has to wait for
+ * the whole Spring Boot app to boot. Calling this the moment the app opens
+ * (and again when it returns to the foreground) means that boot happens
+ * while the person is still looking at the splash / sign-in screen instead
+ * of during their first real request.
+ *
+ * Fire-and-forget on purpose: the response is ignored and every failure is
+ * swallowed, since this is only a nudge. /api/v1/auth/hello is public (no
+ * token needed) and returns a tiny plain string, so it works before login.
+ * Skipped entirely in mock-only mode, where nothing ever reaches a server.
+ */
+export function warmUpBackend(): void {
+  if (TEST_MODE && FORCE_MOCK_ONLY) {
+    return;
+  }
+  fetch(`${BASE_URL}/api/v1/auth/hello`).catch(() => undefined);
+}
 
 async function doFetch(path: string, method: string, token: string | null, body?: unknown, extraHeaders?: Record<string, string>) {
   const controller = new AbortController();
@@ -142,6 +185,12 @@ async function doFetch(path: string, method: string, token: string | null, body?
     // never reached the server - no connectivity, no backend running, or
     // (via the abort above) it just took too long to say either way. All
     // of these mean the same thing to callers: treat it as unreachable.
+    //
+    // The screens only show a generic "can't reach the server", so log the
+    // real reason here where Metro / adb logcat / Xcode can see it:
+    // "AbortError" = it hit FETCH_TIMEOUT_MS, "TypeError: Network request
+    // failed" = DNS / TLS / no connection / connection reset by the server.
+    console.warn(`[api] ${method} ${BASE_URL}${path} did not reach the server:`, err);
     throw new NetworkUnavailableError(err);
   } finally {
     clearTimeout(timeout);

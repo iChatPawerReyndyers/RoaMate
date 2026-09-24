@@ -16,5 +16,9 @@ export default class Destination extends Model {
   @text('operating_hours') operatingHours?: string;
   @field('target_budget_cents') targetBudgetCents?: number;
   @text('attachment_urls') attachmentUrls?: string;
+  /** v3: see db/repositories/destinationsRepository.ts for why this was added. */
+  @text('priority') priority?: string;
+  @field('planned_duration_minutes') plannedDurationMinutes?: number;
+  @text('activity_completed_at') activityCompletedAt?: string;
   @field('synced') synced!: boolean;
 }

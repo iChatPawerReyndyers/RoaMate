@@ -6,6 +6,8 @@ import type { DestinationPriority } from './ItineraryScreen';
 import NeuTextInput from '@/components/neumorphic/NeuTextInput';
 import NeuButton from '@/components/neumorphic/NeuButton';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
+import DateAndStayFields from './DateAndStayFields';
+import { parseStayHours } from './stayDuration';
 import { neuColors, neuRadii, neuSpacing } from '@/theme/neumorphic';
 
 export interface DestinationFormValues {
@@ -15,6 +17,10 @@ export interface DestinationFormValues {
   targetBudgetDollars: string;
   attachmentUrls: string[];
   priority: DestinationPriority;
+  /** ITIN-06: 'YYYY-MM-DD', or null/absent for Unscheduled. */
+  assignedDay: string | null;
+  /** ITIN-06: hours as typed in the field ("1.5"); '' = not set. */
+  plannedDurationHours: string;
 }
 
 const PRIORITY_OPTIONS: { key: DestinationPriority; label: string }[] = [
@@ -32,6 +38,10 @@ interface Props {
     targetBudgetCents?: number;
     attachmentUrls?: string;
     priority: DestinationPriority;
+    /** ITIN-06: null = Unscheduled. Always sent (even when null) because the server overwrites the day on every save. */
+    assignedDay: string | null;
+    /** ITIN-06: whole minutes, null = no planned stay. Always sent, same reason as assignedDay. */
+    plannedDurationMinutes: number | null;
   }) => void;
 }
 
@@ -56,6 +66,8 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>(initialValues?.attachmentUrls ?? []);
   const [newAttachmentUrl, setNewAttachmentUrl] = useState('');
   const [priority, setPriority] = useState<DestinationPriority>(initialValues?.priority ?? 'REQUIRED');
+  const [assignedDay, setAssignedDay] = useState<string | null>(initialValues?.assignedDay ?? null);
+  const [plannedDurationHours, setPlannedDurationHours] = useState(initialValues?.plannedDurationHours ?? '');
 
   const addAttachment = () => {
     const trimmed = newAttachmentUrl.trim();
@@ -70,6 +82,8 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
 
   const handleSubmit = () => {
     if (!name.trim()) return;
+    const stay = parseStayHours(plannedDurationHours);
+    if (stay.status === 'error') return; // DateAndStayFields already shows the reason under the field
 
     const parsedDollars = parseFloat(targetBudgetDollars);
     const targetBudgetCents = Number.isFinite(parsedDollars) && targetBudgetDollars !== ''
@@ -83,6 +97,8 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
       targetBudgetCents,
       attachmentUrls: attachmentUrls.length > 0 ? attachmentUrls.join(',') : undefined,
       priority,
+      assignedDay,
+      plannedDurationMinutes: stay.status === 'ok' ? stay.minutes : null,
     });
   };
 
@@ -124,6 +140,14 @@ export default function DestinationFormScreen({ initialValues, onSubmit }: Props
             );
           })}
         </View>
+
+        <Text style={styles.label}>Schedule</Text>
+        <DateAndStayFields
+          day={assignedDay}
+          onChangeDay={setAssignedDay}
+          stayHours={plannedDurationHours}
+          onChangeStayHours={setPlannedDurationHours}
+        />
 
         <Text style={styles.label}>Target budget</Text>
         <NeuTextInput

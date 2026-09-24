@@ -6,6 +6,7 @@ import NeuCard from '@/components/neumorphic/NeuCard';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
 import NeuButton from '@/components/neumorphic/NeuButton';
 import { neuColors, neuRadii } from '@/theme/neumorphic';
+import { formatStayMinutes } from './stayDuration';
 
 interface LocationNote {
   id: string;
@@ -34,6 +35,10 @@ interface Props {
   lng?: number;
   attachmentUrls?: string;
   priority?: DestinationPriority;
+  /** ITIN-07: the color of the map leg leaving this stop (routeLegColor(i) - see routeColors.ts); undefined for the trip's last routed stop, or one with no coordinates, which get a plain underline instead. */
+  legColor?: string;
+  /** ITIN-06: planned stay in whole minutes; shown as a small clock chip under the coordinates when set. */
+  plannedDurationMinutes?: number | null;
   /**
    * ACT-05: set once "Finish activity at this stop" has been tapped on the
    * Activity Dashboard for this destination (see hasFinishedActivity
@@ -68,6 +73,8 @@ export default function PinnedLocationCard({
   lng,
   attachmentUrls,
   priority = 'REQUIRED',
+  legColor,
+  plannedDurationMinutes,
   activityCompletedAt,
   onAddNote,
   onStartActivity,
@@ -118,9 +125,17 @@ export default function PinnedLocationCard({
     <NeuCard size="md" style={styles.card}>
       <View style={styles.headerRow}>
         <View style={styles.nameFlex}>
-          <Text style={styles.name}>{name}</Text>
+          <Text style={[styles.name, legColor ? { borderBottomColor: legColor } : styles.nameNoLeg]} numberOfLines={1}>
+            {name}
+          </Text>
           {lat !== undefined && lng !== undefined ? (
             <Text style={styles.coordinates}>{lat.toFixed(4)}° N, {lng.toFixed(4)}° E</Text>
+          ) : null}
+          {plannedDurationMinutes ? (
+            <NeumorphicView variant="inset" radius={10} style={styles.stayChip}>
+              <Text style={styles.stayChipIcon}>🕒</Text>
+              <Text style={styles.stayChipText}>{formatStayMinutes(plannedDurationMinutes)}</Text>
+            </NeumorphicView>
           ) : null}
         </View>
         <View style={styles.iconActions}>
@@ -224,8 +239,13 @@ const styles = StyleSheet.create({
   card: { padding: 16, marginBottom: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   nameFlex: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary },
+  name: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary, alignSelf: 'flex-start', borderBottomWidth: 3, paddingBottom: 1 },
+  // ITIN-07: no outgoing leg on the map to color this with (the trip's last routed stop, or a stop with no coordinates at all).
+  nameNoLeg: { borderBottomColor: 'transparent' },
   coordinates: { fontSize: 12, color: neuColors.textMuted, marginTop: 2 },
+  stayChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  stayChipIcon: { fontSize: 12 },
+  stayChipText: { fontSize: 12, color: neuColors.textPrimary },
   iconActions: { flexDirection: 'row', gap: 10 },
   iconButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   iconButtonText: { fontSize: 14, color: neuColors.textPrimary },

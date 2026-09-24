@@ -7,6 +7,7 @@ import {
   State,
 } from 'react-native-gesture-handler';
 import PinnedLocationCard from './PinnedLocationCard';
+import { legColorByDestinationId } from '@/features/geo/routeColors';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
 import { neuColors } from '@/theme/neumorphic';
 
@@ -21,6 +22,15 @@ export interface Destination {
   lng?: number;
   attachmentUrls?: string;
   priority?: DestinationPriority;
+  // These are all returned by GET /destinations (DestinationDto) but weren't
+  // typed here before. The map's quick-edit card has to send them back
+  // unchanged, because PinDestinationRequest is a full overwrite - see
+  // MapScreen.pinDraftToItinerary.
+  address?: string | null;
+  operatingHours?: string | null;
+  targetBudgetCents?: number | null;
+  /** ITIN-06: planned stay in whole minutes (150 = 2 hrs 30 mins); null/undefined = not set. */
+  plannedDurationMinutes?: number | null;
   /** ACT-05: null/undefined until "Finish activity at this stop" is tapped - see PinnedLocationCard's doc comment on hasFinishedActivity. */
   activityCompletedAt?: string;
 }
@@ -57,6 +67,12 @@ export default function ItineraryScreen({
   onGetDirections,
 }: Props) {
   const byDay = useMemo(() => groupByDay(destinations), [destinations]);
+  // ITIN-07: which leg color each destination's name gets underlined with -
+  // computed once here (over the FULL trip-wide list, before day-grouping)
+  // so numbering matches the map's leg order exactly. See
+  // legColorByDestinationId's own doc comment for why no route fetch is
+  // needed for this.
+  const legColors = useMemo(() => legColorByDestinationId(destinations), [destinations]);
 
   const handleDayReorder = (day: string, dayLocalOrderedIds: string[]) => {
     // Splice this day's new local order back into the full destinations
@@ -82,21 +98,32 @@ export default function ItineraryScreen({
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {Object.entries(byDay).map(([day, stops]) => (
-          <DaySection
-            key={day}
-            day={day}
-            stops={stops}
-            onReorder={orderedIds => handleDayReorder(day, orderedIds)}
-            onOpenNotes={onOpenNotes}
-            onStartActivity={onStartActivity}
-            onEditDestination={onEditDestination}
-            onRemoveDestination={onRemoveDestination}
-            onGetDirections={onGetDirections}
-          />
-        ))}
-      </ScrollView>
+      {destinations.length === 0 ? (
+        <View style={styles.emptyState}>
+          <NeumorphicView variant="inset" radius={28} style={styles.emptyIconWrap}>
+            <Text style={styles.emptyIcon}>📍</Text>
+          </NeumorphicView>
+          <Text style={styles.emptyTitle}>No items yet</Text>
+          <Text style={styles.emptyHint}>Places you pin or add will show up here.</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {Object.entries(byDay).map(([day, stops]) => (
+            <DaySection
+              key={day}
+              day={day}
+              stops={stops}
+              legColors={legColors}
+              onReorder={orderedIds => handleDayReorder(day, orderedIds)}
+              onOpenNotes={onOpenNotes}
+              onStartActivity={onStartActivity}
+              onEditDestination={onEditDestination}
+              onRemoveDestination={onRemoveDestination}
+              onGetDirections={onGetDirections}
+            />
+          ))}
+        </ScrollView>
+      )}
       <TouchableOpacity style={styles.fabTouchable} onPress={onAddDestination} activeOpacity={0.85}>
         <NeumorphicView variant="raised" size="fab" radius={28} backgroundColor={neuColors.accent} style={styles.fab}>
           <Text style={styles.fabIcon}>+</Text>
@@ -109,6 +136,7 @@ export default function ItineraryScreen({
 function DaySection({
   day,
   stops,
+  legColors,
   onReorder,
   onOpenNotes,
   onStartActivity,
@@ -118,6 +146,7 @@ function DaySection({
 }: {
   day: string;
   stops: Destination[];
+  legColors: Map<string, string>;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
@@ -156,6 +185,8 @@ function DaySection({
             lng={stop.lng}
             attachmentUrls={stop.attachmentUrls}
             priority={stop.priority}
+            legColor={legColors.get(stop.id)}
+            plannedDurationMinutes={stop.plannedDurationMinutes}
             activityCompletedAt={stop.activityCompletedAt}
             onAddNote={() => onOpenNotes(stop.id, stop.name)}
             onStartActivity={() => onStartActivity(stop.id, stop.name)}
@@ -238,6 +269,11 @@ function groupByDay(destinations: Destination[]): Record<string, Destination[]> 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: neuColors.background },
   scroll: { paddingBottom: 96 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 96 },
+  emptyIconWrap: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyIcon: { fontSize: 24 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary, marginBottom: 4 },
+  emptyHint: { fontSize: 12, color: neuColors.textMuted, textAlign: 'center' },
   daySection: { paddingHorizontal: 16, paddingTop: 8 },
   dayHeader: { fontSize: 16, fontWeight: '700', marginBottom: 8, color: neuColors.textPrimary },
   draggableWrapper: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 12, zIndex: 1 },

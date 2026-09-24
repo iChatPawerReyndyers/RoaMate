@@ -5,11 +5,21 @@ import { Map, Camera, ViewAnnotation, GeoJSONSource, Layer } from '@maplibre/map
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import type { PressEvent } from '@maplibre/maplibre-react-native';
 import Geolocation from '@react-native-community/geolocation';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { apiClient } from '@/services/api/client';
 import { requestLocationPermission } from '@/services/location/requestLocationPermission';
-import { MAP_STYLE_URL, MAPTILER_API_KEY } from '@/config/mapTiles';
+import { mapStyleUrl, MAPTILER_API_KEY } from '@/config/mapTiles';
+import type { MapType } from '@/config/mapTiles';
 import OfflineMapControl from './OfflineMapControl';
+import { MapTypeButton, MapTypePanel } from './MapTypePicker';
+import { loadMapType, saveMapType } from './mapTypePreference';
+import { routeLegColor } from './routeColors';
+import { RouteLegendButton, RouteLegendPanel } from './RouteLegend';
 import type { Destination, DestinationPriority } from '@/features/itinerary/ItineraryScreen';
+import DateAndStayFields from '@/features/itinerary/DateAndStayFields';
+import { minutesToHoursField, parseStayHours } from '@/features/itinerary/stayDuration';
+import { buildPinPayload } from '@/features/itinerary/destinationPayload';
+import { cacheDestinationsFromServer, getCachedLocalDestinations } from '@/db/repositories/destinationsRepository';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
 import { neuColors, neuRadii } from '@/theme/neumorphic';
 
@@ -121,6 +131,7 @@ export default function MapScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraRef>(null);
+  const database = useDatabase();
 
   // ITIN-04 (map side): every destination pinned on the Itinerary tab shows
   // up here too, as its own marker - see fetchDestinations below and the
@@ -148,6 +159,15 @@ export default function MapScreen({
   const [draftPin, setDraftPin] = useState<{ lat: number; lng: number } | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftPriority, setDraftPriority] = useState<DestinationPriority>('REQUIRED');
+  // ITIN-06: optional day ('YYYY-MM-DD', null = Unscheduled) and planned stay
+  // (hours as typed, e.g. "1.5"; parsed to whole minutes on save).
+  const [draftDay, setDraftDay] = useState<string | null>(null);
+  const [draftStayHours, setDraftStayHours] = useState('');
+  // The destination being quick-edited, as loaded - PinDestinationRequest is
+  // a full overwrite on the server, so the fields this card doesn't show
+  // (notes, address, hours, budget, attachments) must be sent back as-is or
+  // they'd be wiped on every edit.
+  const [editingOriginal, setEditingOriginal] = useState<Destination | null>(null);
   const [savingPin, setSavingPin] = useState(false);
   // Set when the draft card above represents an EXISTING destination being
   // quick-edited (Name + Priority only, position unchanged) rather than a
@@ -191,6 +211,15 @@ export default function MapScreen({
    * regardless of how fast or slow the data happens to load.
    */
   const [mapReady, setMapReady] = useState(false);
+  // Which base map is showing (Default / Satellite / Terrain), remembered
+  // between launches. Terrain - the app's original view - until they choose.
+  const [mapType, setMapType] = useState<MapType>(() => loadMapType());
+  const [mapTypeOpen, setMapTypeOpen] = useState(false);
+  // Bumped every time a style finishes loading. Swapping the base map
+  // replaces the whole style, which wipes any route lines that were added
+  // on top of it at runtime - so the route sources below use this in their
+  // `key`, remounting them (and re-adding them natively) on the new style.
+  const [styleEpoch, setStyleEpoch] = useState(0);
 
   /**
    * True fallback view: the whole Philippines, whenever there's nothing
@@ -256,17 +285,34 @@ export default function MapScreen({
     hasFramedCameraRef.current = true;
   }, [locations, mapReady]);
 
+  /**
+   * Offline-first, same fallback as ItineraryContainer.loadDestinations:
+   * network first, then the local cache on failure (see
+   * destinationsRepository.ts) so pins and the itinerary route still show
+   * with no connection, instead of the map silently looking empty.
+   */
   const fetchDestinations = useCallback(async () => {
     try {
       const result = await apiClient.get<Destination[]>(`/api/v1/itinerary/trips/${tripId}/destinations`);
       setDestinations(result);
+      cacheDestinationsFromServer(database, tripId, result).catch(err =>
+        console.warn('Failed to cache itinerary destinations for offline use', err),
+      );
     } catch (err) {
       // Destination pins are a secondary overlay on this screen (member
       // locations are the main point) - fail quietly here rather than
       // stacking a second error banner on top of fetchLocations' own.
-      console.warn('Failed to load itinerary destinations for map pins', err);
+      console.warn('Failed to load itinerary destinations for map pins, falling back to local cache', err);
+      try {
+        const cached = await getCachedLocalDestinations(database, tripId);
+        if (cached.length > 0) {
+          setDestinations(cached);
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to read cached itinerary destinations for map pins', cacheErr);
+      }
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   useFocusEffect(
     useCallback(() => {
@@ -319,6 +365,10 @@ export default function MapScreen({
   }, [destinations, locations.length, mapReady]);
 
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
+  // GEO-05: which leg is highlighted from the legend below the map; null = none (every leg shown at full opacity).
+  const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
+  // GEO-05: the "Route colors" dropdown - a sibling of the map-type dropdown, same one-open-at-a-time behavior.
+  const [legendOpen, setLegendOpen] = useState(false);
 
   /**
    * One real road-following route per consecutive pair of ordered
@@ -339,6 +389,7 @@ export default function MapScreen({
   useEffect(() => {
     let cancelled = false;
     setRouteSegments([]);
+    setActiveLegIndex(null);
 
     const withCoords = destinations.filter(
       (d): d is Destination & { lat: number; lng: number } => d.lat !== undefined && d.lng !== undefined,
@@ -388,6 +439,9 @@ export default function MapScreen({
     setDraftPin({ lat: target.lat, lng: target.lng });
     setDraftName(target.name);
     setDraftPriority(target.priority ?? 'REQUIRED');
+    setDraftDay(target.assignedDay ?? null);
+    setDraftStayHours(minutesToHoursField(target.plannedDurationMinutes));
+    setEditingOriginal(target);
     setPinSavedMessage(null);
     cameraRef.current?.flyTo({ center: [target.lng, target.lat], zoom: 15, duration: 600 });
     onEditHandled?.();
@@ -546,18 +600,44 @@ export default function MapScreen({
     setDraftPin({ lat: result.lat, lng: result.lng });
     setDraftName(result.name);
     setDraftPriority('REQUIRED');
+    setDraftDay(null);
+    setDraftStayHours('');
+    setEditingOriginal(null);
     setPinSavedMessage(null);
     setSearchQuery('');
     setSearchResults([]);
     cameraRef.current?.flyTo({ center: [result.lng, result.lat], zoom: 14, duration: 800 });
   };
 
+  const handleSelectMapType = (type: MapType) => {
+    setMapType(type);
+    saveMapType(type);
+  };
+
+  const handleToggleMapType = () => {
+    setMapTypeOpen(prev => !prev);
+    setLegendOpen(false);
+  };
+
+  const handleToggleLegend = () => {
+    if (routeSegments.length === 0) return;
+    setLegendOpen(prev => !prev);
+    setMapTypeOpen(false);
+  };
+
   const handleMapPress = (event: { nativeEvent: PressEvent }) => {
+    // Tapping the map is the natural way to dismiss the map-type sheet and any highlighted route leg.
+    setMapTypeOpen(false);
+    setLegendOpen(false);
+    setActiveLegIndex(null);
     if (!pinModeActive) return;
     const [lng, lat] = event.nativeEvent.lngLat;
     setDraftPin({ lat, lng });
     setDraftName('');
     setDraftPriority('REQUIRED');
+    setDraftDay(null);
+    setDraftStayHours('');
+    setEditingOriginal(null);
     setPinSavedMessage(null);
   };
 
@@ -569,21 +649,32 @@ export default function MapScreen({
    */
   const pinDraftToItinerary = async () => {
     if (!draftPin || !draftName.trim()) return;
+    const stay = parseStayHours(draftStayHours);
+    if (stay.status === 'error') return; // the readout under the field already says why; Save is disabled too
     setSavingPin(true);
     try {
-      await apiClient.post('/api/v1/itinerary/destinations', {
-        ...(editingDestinationId ? { id: editingDestinationId } : {}),
-        tripId,
-        name: draftName.trim(),
-        lat: draftPin.lat,
-        lng: draftPin.lng,
-        priority: draftPriority,
-      });
+      await apiClient.post(
+        '/api/v1/itinerary/destinations',
+        buildPinPayload({
+          tripId,
+          name: draftName.trim(),
+          lat: draftPin.lat,
+          lng: draftPin.lng,
+          priority: draftPriority,
+          assignedDay: draftDay,
+          plannedDurationMinutes: stay.status === 'ok' ? stay.minutes : null,
+          editingId: editingDestinationId,
+          original: editingOriginal,
+        }),
+      );
       setPinSavedMessage(
         editingDestinationId ? `Updated "${draftName.trim()}".` : `Saved "${draftName.trim()}" to the itinerary.`,
       );
       setDraftPin(null);
       setDraftName('');
+      setDraftDay(null);
+      setDraftStayHours('');
+      setEditingOriginal(null);
       setEditingDestinationId(null);
       fetchDestinations();
     } catch (err) {
@@ -593,6 +684,9 @@ export default function MapScreen({
       setSavingPin(false);
     }
   };
+
+  // Save is blocked while the name is empty, a save is in flight, or the hours box holds something unusable.
+  const saveBlocked = !draftName.trim() || savingPin || parseStayHours(draftStayHours).status === 'error';
 
   return (
     <View style={styles.container}>
@@ -617,15 +711,18 @@ export default function MapScreen({
       */}
       <Map
         style={StyleSheet.absoluteFill}
-        mapStyle={MAP_STYLE_URL}
+        mapStyle={mapStyleUrl(mapType)}
         onPress={handleMapPress}
         androidView="texture"
         attributionPosition={{ bottom: 6, right: 6 }}
-        onDidFinishLoadingStyle={() => setMapReady(true)}
+        onDidFinishLoadingStyle={() => {
+          setMapReady(true);
+          setStyleEpoch(epoch => epoch + 1);
+        }}
       >
         <Camera ref={cameraRef} initialViewState={{ center: DEFAULT_CENTER, zoom: 5 }} />
         {routeSegments.map((segment, index) => (
-          <React.Fragment key={`route-${segment.fromId}-${segment.toId}`}>
+          <React.Fragment key={`route-${segment.fromId}-${segment.toId}-${styleEpoch}`}>
             <GeoJSONSource
               id={`itinerary-route-source-${index}`}
               data={{ type: 'Feature', properties: {}, geometry: segment.geometry }}
@@ -634,18 +731,21 @@ export default function MapScreen({
                 id={`itinerary-route-line-${index}`}
                 type="line"
                 layout={{ 'line-join': 'round', 'line-cap': 'round' }}
-                paint={
-                  segment.isEstimate
-                    ? { 'line-color': '#8891A5', 'line-width': 2.5, 'line-dasharray': [2, 2] }
-                    : { 'line-color': '#8891A5', 'line-width': 3.5 }
-                }
+                paint={(() => {
+                  const color = routeLegColor(index);
+                  const dimmed = activeLegIndex !== null && activeLegIndex !== index;
+                  const width = activeLegIndex === index ? 5.5 : 3.5;
+                  return segment.isEstimate
+                    ? { 'line-color': color, 'line-width': dimmed ? 2 : width - 1, 'line-opacity': dimmed ? 0.25 : 1, 'line-dasharray': [2, 2] }
+                    : { 'line-color': color, 'line-width': dimmed ? 2 : width, 'line-opacity': dimmed ? 0.25 : 1 };
+                })()}
               />
             </GeoJSONSource>
             <ViewAnnotation
               id={`itinerary-route-label-${index}`}
               lngLat={segment.midpoint}
             >
-              <View style={styles.routeLabelWrap}>
+              <View style={[styles.routeLabelWrap, activeLegIndex !== null && activeLegIndex !== index && styles.routeLabelDimmed]}>
                 <Text style={styles.routeLabelText}>
                   {formatDuration(segment.durationSeconds)} · {formatDistanceKm(segment.distanceMeters)}
                   {segment.isEstimate ? ' (est.)' : ''}
@@ -656,6 +756,7 @@ export default function MapScreen({
         ))}
         {directionsRoute ? (
           <GeoJSONSource
+            key={`directions-route-${styleEpoch}`}
             id="directions-route-source"
             data={{ type: 'Feature', properties: {}, geometry: directionsRoute.geometry }}
           >
@@ -764,7 +865,26 @@ export default function MapScreen({
               </Text>
             </NeumorphicView>
           </TouchableOpacity>
+          <MapTypeButton open={mapTypeOpen} onPress={handleToggleMapType} />
+          <RouteLegendButton open={legendOpen} onPress={handleToggleLegend} disabled={routeSegments.length === 0} />
         </View>
+        {/* Hidden while search results are showing - both drop down from the same spot. */}
+        {mapTypeOpen && searchResults.length === 0 ? (
+          <View style={styles.mapTypePanelWrap}>
+            <MapTypePanel value={mapType} onSelect={handleSelectMapType} />
+          </View>
+        ) : null}
+        {legendOpen && searchResults.length === 0 ? (
+          <View style={styles.mapTypePanelWrap}>
+            <RouteLegendPanel
+              segments={routeSegments}
+              nameOf={id => destinations.find(d => d.id === id)?.name}
+              activeIndex={activeLegIndex}
+              onSelect={setActiveLegIndex}
+              onClose={() => setLegendOpen(false)}
+            />
+          </View>
+        ) : null}
         {searchResults.length > 0 ? (
           <NeumorphicView variant="raised" radius={neuRadii.lg} style={styles.searchResults}>
             {searchResults.map((result, index) => (
@@ -843,12 +963,23 @@ export default function MapScreen({
               );
             })}
           </View>
+          <View style={styles.draftDateStayWrap}>
+            <DateAndStayFields
+              day={draftDay}
+              onChangeDay={setDraftDay}
+              stayHours={draftStayHours}
+              onChangeStayHours={setDraftStayHours}
+            />
+          </View>
           <View style={styles.draftActions}>
             <TouchableOpacity
               style={styles.draftCancelFlex}
               onPress={() => {
                 setDraftPin(null);
                 setEditingDestinationId(null);
+                setEditingOriginal(null);
+                setDraftDay(null);
+                setDraftStayHours('');
               }}
             >
               <NeumorphicView variant="raised" radius={neuRadii.md} style={styles.draftCancelButton}>
@@ -858,12 +989,12 @@ export default function MapScreen({
             <TouchableOpacity
               style={styles.draftSaveFlex}
               onPress={pinDraftToItinerary}
-              disabled={!draftName.trim() || savingPin}
+              disabled={saveBlocked}
             >
               <NeumorphicView
                 variant="raised"
                 radius={neuRadii.md}
-                backgroundColor={!draftName.trim() ? neuColors.shadowDark : neuColors.accent}
+                backgroundColor={saveBlocked ? neuColors.shadowDark : neuColors.accent}
                 style={styles.draftSaveButton}
               >
                 {savingPin ? (
@@ -1127,6 +1258,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(136,145,165,0.4)',
   },
   routeLabelText: { fontSize: 10, fontWeight: '700', color: neuColors.textPrimary },
+  routeLabelDimmed: { opacity: 0.35 },
   pin: { width: 16, height: 16, borderRadius: 8, backgroundColor: neuColors.accent, borderWidth: 2, borderColor: '#fff' },
   pinStale: { backgroundColor: '#999' },
   pinDraft: { backgroundColor: neuColors.danger },
@@ -1145,6 +1277,8 @@ const styles = StyleSheet.create({
   bannerText: { color: '#fff', fontSize: 12 },
   searchBar: { position: 'absolute', top: 12, left: 12, right: 12 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Drops down under the button row, right edges lined up with the map-type button (searchBar has the 12px side inset).
+  mapTypePanelWrap: { position: 'absolute', top: 50, right: 0, zIndex: 10, elevation: 10 },
   searchInputRow: {
     flex: 1,
     flexDirection: 'row',
@@ -1180,7 +1314,8 @@ const styles = StyleSheet.create({
   draftPriorityOption: { paddingVertical: 8, alignItems: 'center' },
   draftPriorityText: { fontSize: 11, fontWeight: '600', color: neuColors.textMuted },
   draftPriorityTextSelected: { color: neuColors.white },
-  draftActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  draftDateStayWrap: { marginTop: 12 },
+  draftActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   draftCancelFlex: { flex: 1 },
   draftCancelButton: { paddingVertical: 11, alignItems: 'center' },
   draftCancelButtonText: { fontSize: 13, fontWeight: '700', color: neuColors.textMuted },

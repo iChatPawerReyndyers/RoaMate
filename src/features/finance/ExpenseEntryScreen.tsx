@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
-import { resolveEvenSplitRemaining, SplitLine } from './FillRemainingBalance';
+import { computeFillRestAmount, resolveEvenSplitRemaining, SplitLine } from './FillRemainingBalance';
 import NeuTextInput from '@/components/neumorphic/NeuTextInput';
 import NeuToggle from '@/components/neumorphic/NeuToggle';
 import NeuButton from '@/components/neumorphic/NeuButton';
@@ -56,10 +56,15 @@ function sanitizeAmountInput(raw: string): string {
   const firstDot = cleaned.indexOf('.');
   if (firstDot !== -1) {
     cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
-    const [whole, fraction] = cleaned.split('.');
+    const [whole = '', fraction = ''] = cleaned.split('.');
     cleaned = fraction.length > 3 ? `${whole}.${fraction.slice(0, 3)}` : cleaned;
   }
   return cleaned;
+}
+
+/** Cents -> the plain "300.00" string an amount field holds (no thousands separators, unlike Cents.formatPlain). */
+function formatDollarsField(cents: Cents): string {
+  return Cents.toDollars(cents).toFixed(2);
 }
 
 /**
@@ -113,8 +118,10 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     setPayerRows(prev => prev.map(row => (row.key === key ? { ...row, amountDollars: dollars } : row)));
   };
 
+  /** "Fill rest" on a payer row: puts whatever the OTHER included payers haven't covered into this row's field. */
   const fillRemaining = (key: string) => {
-    setPayerRows(prev => prev.map(row => (row.key === key ? { ...row, amountDollars: '' } : row)));
+    const rest = computeFillRestAmount(totalCents, includedPayerLines, key);
+    setPayerRows(prev => prev.map(row => (row.key === key ? { ...row, amountDollars: formatDollarsField(rest) } : row)));
   };
 
   const toggleSplitIncluded = (userId: string) => {
@@ -125,8 +132,10 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, amountDollars: dollars } : row)));
   };
 
-  const clearSplitAmount = (userId: string) => {
-    setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, amountDollars: '' } : row)));
+  /** "Fill rest" on a split row: same behavior as fillRemaining above, for the "Split between" list. */
+  const fillSplitRemaining = (userId: string) => {
+    const rest = computeFillRestAmount(totalCents, includedSplitLines, userId);
+    setSplitRows(prev => prev.map(row => (row.userId === userId ? { ...row, amountDollars: formatDollarsField(rest) } : row)));
   };
 
   const allSelected = splitRows.length > 0 && splitRows.every(r => r.included);
@@ -282,7 +291,7 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
                   value={row.amountDollars}
                   onChangeText={v => updateSplitAmount(row.userId, sanitizeAmountInput(v))}
                 />
-                <TouchableOpacity onPress={() => clearSplitAmount(row.userId)}>
+                <TouchableOpacity onPress={() => fillSplitRemaining(row.userId)}>
                   <Text style={styles.fillRestButton}>Fill rest</Text>
                 </TouchableOpacity>
               </View>

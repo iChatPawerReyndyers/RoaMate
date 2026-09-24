@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Q } from '@nozbe/watermelondb';
 import { useDatabase } from '@nozbe/watermelondb/react';
-import ChecklistScreen, { Item } from './ChecklistScreen';
+import ChecklistScreen, { Item, NewItemOptions } from './ChecklistScreen';
+import type { Member } from './checklistViews';
 import { TemplateOption } from './TemplatePicker';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
@@ -23,6 +25,9 @@ export default function ChecklistContainer({ tripId }: Props) {
   const [category, setCategory] = useState<Category>('PACKING');
   const [items, setItems] = useState<Item[]>([]);
   const [customTemplates, setCustomTemplates] = useState<TemplateOption[]>([]);
+  // CHK-05: who can be put in charge of a shared item, and who "You" is.
+  const [members, setMembers] = useState<Member[]>([]);
+  const [currentUserId, setCurrentUserId] = useState('');
   const syncManager = useSync();
   const database = useDatabase();
   // Rendered inside the Checklist tab (see TripTabs.tsx), so the nearest
@@ -40,6 +45,17 @@ export default function ChecklistContainer({ tripId }: Props) {
       console.warn('Failed to load checklist items', err);
     }
   }, [tripId, category]);
+
+  const loadMembers = useCallback(async () => {
+    try {
+      setCurrentUserId(await getCurrentUserId());
+      const result = await apiClient.get<{ userId: string; displayName: string }[]>(`/api/v1/trips/${tripId}/members`);
+      setMembers(result.map(m => ({ userId: m.userId, displayName: m.displayName })));
+    } catch (err) {
+      // Without the list the sheet can only offer "Nobody yet" - items and everything else still work.
+      console.warn('Failed to load trip members', err);
+    }
+  }, [tripId]);
 
   const loadCustomTemplates = useCallback(async () => {
     try {
@@ -65,6 +81,10 @@ export default function ChecklistContainer({ tripId }: Props) {
     loadCustomTemplates();
   }, [loadItems, loadCustomTemplates]);
 
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
   const builtInTemplateOptions: TemplateOption[] = useMemo(() => {
     if (category === 'GROCERY') {
       return [{ key: 'grocery-default', label: 'Grocery', items: GROCERY_TEMPLATE }];
@@ -78,11 +98,7 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const templateOptions = [...builtInTemplateOptions, ...customTemplates];
 
-  const addSingleItem = async (
-    label: string,
-    visibility: 'PERSONAL' | 'SHARED' = 'SHARED',
-    packingItemCategory?: Item['packingItemCategory'],
-  ) => {
+  const addSingleItem = async (label: string, visibility: 'PERSONAL' | 'SHARED' = 'SHARED', options: NewItemOptions = {}) => {
     const userId = await getCurrentUserId();
     try {
       const created = await apiClient.post<Item>('/api/v1/checklists/items', {
@@ -91,8 +107,12 @@ export default function ChecklistContainer({ tripId }: Props) {
         label,
         visibility,
         ownerUserId: userId,
+        // CHK-05: only SHARED items can be put in someone's charge (the server rejects it for PERSONAL).
+        ...(visibility === 'SHARED' && options.assignedToUserId ? { assignedToUserId: options.assignedToUserId } : {}),
         ...(category === 'GROCERY' ? { quantity: 1, priority: 'MEDIUM' } : {}),
-        ...(category === 'PACKING' && packingItemCategory ? { packingItemCategory } : {}),
+        // The add bar's category is a PackingItemCategory name on the Packing tab and a store section on Grocery.
+        ...(category === 'PACKING' && options.category ? { packingItemCategory: options.category } : {}),
+        ...(category === 'GROCERY' && options.category ? { storeCategory: options.category } : {}),
       });
       setItems(prev => [...prev, created]);
     } catch (err) {
@@ -140,6 +160,40 @@ export default function ChecklistContainer({ tripId }: Props) {
     }
   };
 
+  /**
+   * Applies `change` to the item on screen immediately, then confirms it with
+   * the server. If the server refuses (offline, not a member any more...) only
+   * THAT item is put back the way it was and the person is told - so a
+   * failure can't clobber other edits made in the meantime.
+   */
+  const updateItemOptimistically = async (itemId: string, change: Partial<Item>, save: () => Promise<Item>) => {
+    const original = items.find(i => i.id === itemId);
+    if (!original) return;
+    setItems(prev => prev.map(i => (i.id === itemId ? { ...i, ...change } : i)));
+    try {
+      const saved = await save();
+      setItems(prev => prev.map(i => (i.id === itemId ? saved : i)));
+    } catch (err) {
+      console.warn('Failed to update checklist item', err);
+      setItems(prev => prev.map(i => (i.id === itemId ? original : i)));
+      Alert.alert("Couldn't save that change", 'Check your connection and try again.');
+    }
+  };
+
+  const handleAssign = (itemId: string, userId: string | null) =>
+    updateItemOptimistically(itemId, { assignedToUserId: userId }, () =>
+      apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/assignee`, { assignedToUserId: userId }),
+    );
+
+  const handleChangeItemCategory = (itemId: string, value: string | null) =>
+    updateItemOptimistically(
+      itemId,
+      category === 'PACKING'
+        ? { packingItemCategory: value as Item['packingItemCategory'] }
+        : { storeCategory: value },
+      () => apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/category`, { category: value }),
+    );
+
   const handleConvertToExpense = (id: string) => {
     const item = items.find(i => i.id === id);
     if (!item) return;
@@ -154,9 +208,13 @@ export default function ChecklistContainer({ tripId }: Props) {
       category={category}
       onChangeCategory={setCategory}
       items={items}
+      members={members}
+      currentUserId={currentUserId}
       onToggle={handleToggle}
       onConvertToExpense={handleConvertToExpense}
       onAddItem={addSingleItem}
+      onAssign={handleAssign}
+      onChangeItemCategory={handleChangeItemCategory}
       templateOptions={templateOptions}
       onPickTemplate={handlePickTemplate}
       onSaveCurrentAsTemplate={handleSaveCurrentAsTemplate}
