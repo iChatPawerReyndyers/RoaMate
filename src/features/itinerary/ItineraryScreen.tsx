@@ -7,7 +7,7 @@ import {
   State,
 } from 'react-native-gesture-handler';
 import PinnedLocationCard from './PinnedLocationCard';
-import { legColorByDestinationId } from '@/features/geo/routeColors';
+import { stopGradientByDestinationId } from '@/features/geo/routeColors';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
 import { neuColors } from '@/theme/neumorphic';
 
@@ -67,12 +67,11 @@ export default function ItineraryScreen({
   onGetDirections,
 }: Props) {
   const byDay = useMemo(() => groupByDay(destinations), [destinations]);
-  // ITIN-07: which leg color each destination's name gets underlined with -
-  // computed once here (over the FULL trip-wide list, before day-grouping)
-  // so numbering matches the map's leg order exactly. See
-  // legColorByDestinationId's own doc comment for why no route fetch is
-  // needed for this.
-  const legColors = useMemo(() => legColorByDestinationId(destinations), [destinations]);
+  // ITIN-07: each destination's underline color(s) - computed once here
+  // (over the FULL trip-wide list, before day-grouping) so numbering
+  // matches the map's stop order exactly. See stopGradientByDestinationId's
+  // own doc comment for why no route fetch is needed for this.
+  const stopGradients = useMemo(() => stopGradientByDestinationId(destinations), [destinations]);
 
   const handleDayReorder = (day: string, dayLocalOrderedIds: string[]) => {
     // Splice this day's new local order back into the full destinations
@@ -113,7 +112,7 @@ export default function ItineraryScreen({
               key={day}
               day={day}
               stops={stops}
-              legColors={legColors}
+              stopGradients={stopGradients}
               onReorder={orderedIds => handleDayReorder(day, orderedIds)}
               onOpenNotes={onOpenNotes}
               onStartActivity={onStartActivity}
@@ -136,7 +135,7 @@ export default function ItineraryScreen({
 function DaySection({
   day,
   stops,
-  legColors,
+  stopGradients,
   onReorder,
   onOpenNotes,
   onStartActivity,
@@ -146,7 +145,7 @@ function DaySection({
 }: {
   day: string;
   stops: Destination[];
-  legColors: Map<string, string>;
+  stopGradients: Map<string, { fromColor: string | null; toColor: string }>;
   onReorder: (orderedIds: string[]) => void;
   onOpenNotes: (destinationId: string, destinationName: string) => void;
   onStartActivity: (destinationId: string, destinationName: string) => void;
@@ -185,7 +184,7 @@ function DaySection({
             lng={stop.lng}
             attachmentUrls={stop.attachmentUrls}
             priority={stop.priority}
-            legColor={legColors.get(stop.id)}
+            gradient={stopGradients.get(stop.id)}
             plannedDurationMinutes={stop.plannedDurationMinutes}
             activityCompletedAt={stop.activityCompletedAt}
             onAddNote={() => onOpenNotes(stop.id, stop.name)}

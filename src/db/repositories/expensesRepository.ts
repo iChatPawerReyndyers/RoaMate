@@ -125,3 +125,44 @@ export async function getCachedLocalExpenses(database: Database, tripId: string)
 
   return result;
 }
+/**
+ * FIN-05: like getCachedLocalExpenses above, but returns the full
+ * per-expense ExpenseDto shape ExpensesHubScreen renders (id, description,
+ * date, category...) rather than the totals-only LocalExpense shape
+ * SettlementEngine needs. Same source data, just read back differently for
+ * a different consumer - both rely on cacheExpensesFromServer having run.
+ */
+export async function getCachedLocalExpenseList(database: Database, tripId: string): Promise<ExpenseDto[]> {
+  const expensesCollection = database.get<any>('expenses');
+  const paymentsCollection = database.get<any>('expense_payments');
+  const participantsCollection = database.get<any>('expense_participants');
+
+  const expenses = await expensesCollection.query(Q.where('trip_id', tripId)).fetch();
+  const result: ExpenseDto[] = [];
+
+  for (const expense of expenses) {
+    const payments = await paymentsCollection.query(Q.where('expense_id', expense.id)).fetch();
+    const participants = await participantsCollection.query(Q.where('expense_id', expense.id)).fetch();
+
+    result.push({
+      id: expense.serverId ?? expense.id,
+      description: expense.description,
+      totalAmountCents: expense.totalAmountCents,
+      expenseDate: new Date(expense.expenseDate).toISOString(),
+      category: expense.category ?? undefined,
+      createdByUserId: expense.createdByUserId,
+      flaggedDuplicate: expense.flaggedDuplicate,
+      payments: payments.map((p: any) => ({
+        source: p.source,
+        payerUserId: p.payerUserId ?? undefined,
+        amountPaidCents: p.amountPaidCents,
+      })),
+      participants: participants.map((p: any) => ({
+        userId: p.userId,
+        fairShareCents: p.fairShareCents,
+      })),
+    });
+  }
+
+  return result;
+}

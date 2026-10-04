@@ -17,6 +17,7 @@ import {
   categoryValueOf,
   groupByCategory,
   groupByPerson,
+  isEveryone,
   isPersonal,
   kindText,
   memberName,
@@ -29,9 +30,12 @@ export interface Item {
   id: string;
   label: string;
   checked: boolean;
-  /** CHK-05: who's in charge of this SHARED item; null/absent = nobody yet. */
+  /** CHK-05: who's in charge of this SHARED item; null/absent = nobody yet. Never set for EVERYONE items - see visibility. */
   assignedToUserId?: string | null;
-  visibility?: 'PERSONAL' | 'SHARED';
+  /** CHK-01/06: PERSONAL = only me. SHARED = everyone sees it, one person in charge. EVERYONE = everyone sees it, each person brings their own. */
+  visibility?: 'PERSONAL' | 'SHARED' | 'EVERYONE';
+  /** CHK-06: who added this item - shown on EVERYONE items ("Added by Maria") so it's clear whose reminder it originally was, even though it's required of everyone. */
+  ownerUserId?: string;
   quantity?: number;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
   /** GROCERY only: the store section (Produce, Dairy...). */
@@ -42,6 +46,7 @@ export interface Item {
 
 /** What the add bar can set on a brand-new item beyond its name and Shared/Personal. */
 export interface NewItemOptions {
+  // (visibility itself is a separate onAddItem argument, not part of this options bag)
   /** The stored category value: a PackingItemCategory name (packing) or a store section (grocery); null/absent = none ("Other"). */
   category?: string | null;
   /** Only meaningful for SHARED items. */
@@ -52,8 +57,9 @@ const LIST_TABS: { key: 'PACKING' | 'GROCERY'; label: string }[] = [
   { key: 'PACKING', label: 'Packing' },
   { key: 'GROCERY', label: 'Grocery' },
 ];
-const VISIBILITY_OPTIONS: { key: 'SHARED' | 'PERSONAL'; label: string }[] = [
+const VISIBILITY_OPTIONS: { key: 'SHARED' | 'EVERYONE' | 'PERSONAL'; label: string }[] = [
   { key: 'SHARED', label: 'Shared' },
+  { key: 'EVERYONE', label: 'Everyone' },
   { key: 'PERSONAL', label: 'Personal' },
 ];
 const FILTER_OPTIONS: { key: TodoFilter; label: string }[] = [
@@ -73,8 +79,10 @@ interface Props {
   currentUserId: string;
   onToggle: (id: string) => void;
   onConvertToExpense?: (id: string) => void;
-  onAddItem: (label: string, visibility: 'PERSONAL' | 'SHARED', options?: NewItemOptions) => void;
+  onAddItem: (label: string, visibility: 'PERSONAL' | 'SHARED' | 'EVERYONE', options?: NewItemOptions) => void;
   onAssign: (itemId: string, userId: string | null) => void;
+  /** CHK-06: creates a second item with the same name/category, unassigned, for when more than one person needs to bring their own ("we need two tents"). */
+  onDuplicateItem: (item: Item) => void;
   onChangeItemCategory: (itemId: string, value: string | null) => void;
   templateOptions: TemplateOption[];
   onPickTemplate: (option: TemplateOption) => void;
@@ -97,6 +105,7 @@ export default function ChecklistScreen({
   onConvertToExpense,
   onAddItem,
   onAssign,
+  onDuplicateItem,
   onChangeItemCategory,
   templateOptions,
   onPickTemplate,
@@ -124,7 +133,7 @@ export default function ChecklistScreen({
   const [newItemLabel, setNewItemLabel] = useState('');
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
   // CHK-01: Personal (device/account-only, not synced to the group) vs Shared.
-  const [newItemVisibility, setNewItemVisibility] = useState<'PERSONAL' | 'SHARED'>('SHARED');
+  const [newItemVisibility, setNewItemVisibility] = useState<'PERSONAL' | 'SHARED' | 'EVERYONE'>('SHARED');
   const [newItemCategory, setNewItemCategory] = useState<string | null>(null);
   const [newItemAssignee, setNewItemAssignee] = useState<string | null>(null);
   const [addAssigneeSheetOpen, setAddAssigneeSheetOpen] = useState(false);
@@ -137,10 +146,10 @@ export default function ChecklistScreen({
   const handleAdd = () => {
     const trimmed = newItemLabel.trim();
     if (!trimmed) return;
-    const shared = newItemVisibility === 'SHARED';
     onAddItem(trimmed, newItemVisibility, {
       category: newItemCategory,
-      assignedToUserId: shared ? newItemAssignee : null,
+      // Only a SHARED item can have a single person in charge - EVERYONE has no one assignee by definition, PERSONAL is just yours.
+      assignedToUserId: newItemVisibility === 'SHARED' ? newItemAssignee : null,
     });
     // Keep the chosen category / Shared-Personal so several items in a row are quick; the assignee is per item.
     setNewItemLabel('');
@@ -151,12 +160,14 @@ export default function ChecklistScreen({
 
   const progress = progressOf(items);
   const sheetItem = sheetItemId ? items.find(i => i.id === sheetItemId) : undefined;
+  // Only a SHARED item can be assigned to one person (or duplicated for a second one) - Personal and Everyone have no single assignee.
+  const isSheetItemAssignable = (item: Item) => !isPersonal(item) && !isEveryone(item);
 
   const categorySections = useMemo(() => groupByCategory(items, category), [items, category]);
   const personSections = useMemo(() => groupByPerson(items, members, currentUserId), [items, members, currentUserId]);
   const { todo, done } = useMemo(() => splitTodoDone(items, todoFilter, currentUserId), [items, todoFilter, currentUserId]);
 
-  /** "Electronics · Qty 2" - the category only where the view isn't already grouped by it. */
+  /** "Electronics · Qty 2 · Added by Maria" - the category only where the view isn't already grouped by it; the adder only for Everyone items, where it's the one clue whose reminder this originally was. */
   const subLine = (item: Item, withCategory: boolean): string => {
     const parts: string[] = [];
     if (withCategory) {
@@ -164,6 +175,9 @@ export default function ChecklistScreen({
     }
     if (category === 'GROCERY' && item.quantity && item.quantity > 1) {
       parts.push(`Qty ${item.quantity}`);
+    }
+    if (isEveryone(item) && item.ownerUserId) {
+      parts.push(`Added by ${memberName(item.ownerUserId, members, currentUserId)}`);
     }
     return parts.join(' · ');
   };
@@ -178,6 +192,20 @@ export default function ChecklistScreen({
           hitSlop={8}
         >
           <Text style={styles.lock}>🔒</Text>
+        </TouchableOpacity>
+      );
+    }
+    if (isEveryone(item)) {
+      return (
+        <TouchableOpacity
+          onPress={() => setSheetItemId(item.id)}
+          accessibilityRole="button"
+          accessibilityLabel="Everyone brings their own - change category"
+          hitSlop={6}
+        >
+          <View style={styles.everyoneBadge}>
+            <Text style={styles.everyoneBadgeText}>Everyone</Text>
+          </View>
         </TouchableOpacity>
       );
     }
@@ -450,13 +478,14 @@ export default function ChecklistScreen({
 
       <ChecklistItemSheet
         visible={!!sheetItem}
-        title={sheetItem && isPersonal(sheetItem) ? text.categoryNoun : undefined}
-        showMembers={!!sheetItem && !isPersonal(sheetItem)}
+        title={sheetItem && !isSheetItemAssignable(sheetItem) ? text.categoryNoun : undefined}
+        showMembers={!!sheetItem && isSheetItemAssignable(sheetItem)}
         subtitle={sheetItem ? `${sheetItem.label} · ${categoryLabelOf(categoryValueOf(sheetItem, category), category)}` : ''}
         members={members}
         currentUserId={currentUserId}
         assignedToUserId={sheetItem?.assignedToUserId ?? null}
         onAssign={userId => sheetItem && onAssign(sheetItem.id, userId)}
+        onDuplicateForAnother={sheetItem && isSheetItemAssignable(sheetItem) ? () => onDuplicateItem(sheetItem) : undefined}
         categoryLabel={text.categoryNoun}
         categoryOptions={categoryOptions}
         category={sheetItem ? categoryValueOf(sheetItem, category) : null}
@@ -521,6 +550,17 @@ const styles = StyleSheet.create({
   assignChip: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: neuColors.accent },
   assignChipText: { fontSize: 11, color: neuColors.accent, fontWeight: '600' },
   lock: { fontSize: 14 },
+  everyoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    borderRadius: 14,
+    backgroundColor: '#EAF3EC',
+    borderWidth: 1,
+    borderColor: '#BEE0C6',
+  },
+  everyoneBadgeText: { fontSize: 11, fontWeight: '600', color: '#2E7D4F' },
   convertLink: { color: neuColors.accent, fontSize: 11, fontWeight: '700' },
   empty: { color: neuColors.textMuted, fontStyle: 'italic', textAlign: 'center', marginTop: 24 },
   addArea: { marginTop: neuSpacing.sm },

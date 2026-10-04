@@ -30,6 +30,14 @@ interface AccountContextValue {
   isLoading: boolean;
   register: (username: string, password: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
+  /**
+   * DEV-ONLY: sets `username`'s password with no proof of ownership (no old
+   * password, no verification) and logs straight in as them. Calls the
+   * backend's /dev-reset-password, which carries the exact same warning -
+   * see AuthController.devResetPassword. For testing only; never expose
+   * this to a real user base.
+   */
+  resetPasswordDev: (username: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -145,9 +153,24 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
+  const resetPasswordDev = useCallback(
+    async (username: string, newPassword: string) => {
+      try {
+        const token = await apiClient.post<TokenResponse>('/api/v1/auth/dev-reset-password', { username, newPassword });
+        await applySession(token);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          throw new InvalidCredentialsError(`No account found for "${username}"`);
+        }
+        throw err;
+      }
+    },
+    [applySession],
+  );
+
   const value = useMemo(
-    () => ({ account, isLoading, register, login, logout }),
-    [account, isLoading, register, login, logout],
+    () => ({ account, isLoading, register, login, resetPasswordDev, logout }),
+    [account, isLoading, register, login, resetPasswordDev, logout],
   );
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;

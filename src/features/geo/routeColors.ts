@@ -65,3 +65,35 @@ export function legColorByDestinationId(destinations: DestinationForLegColor[]):
   }
   return colors;
 }
+
+export interface StopGradient {
+  /** null for the trip's first routed stop - nothing comes before it, so it's drawn solid rather than as a gradient. */
+  fromColor: string | null;
+  /** This stop's own color - always set. */
+  toColor: string;
+}
+
+/**
+ * ITIN-07 v2: each routed destination gets its OWN fixed color (stop i's
+ * color is routeLegColor(i) - same palette as the map's legs, just indexed
+ * by stop position instead of leg position), and its underline is a
+ * gradient from the PREVIOUS stop's color into its own - "arriving from
+ * there, now here". The first stop has no previous color, so it's solid.
+ *
+ * This replaces legColorByDestinationId's "color of the leg leaving this
+ * stop" scheme, which left the trip's last stop with no color at all
+ * (nothing leaves it). Every routed stop gets an entry here, including the
+ * last one. A destination with no coordinates still gets no entry, same as
+ * before - it never had a position in the route to draw from.
+ */
+export function stopGradientByDestinationId(destinations: DestinationForLegColor[]): Map<string, StopGradient> {
+  const withCoords = destinations.filter(d => d.lat !== undefined && d.lng !== undefined);
+  const gradients = new Map<string, StopGradient>();
+  withCoords.forEach((stop, i) => {
+    gradients.set(stop.id, {
+      fromColor: i === 0 ? null : routeLegColor(i - 1),
+      toColor: routeLegColor(i),
+    });
+  });
+  return gradients;
+}

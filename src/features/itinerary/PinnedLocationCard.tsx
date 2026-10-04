@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { apiClient } from '@/services/api/client';
 import type { DestinationPriority } from './ItineraryScreen';
 import NeuCard from '@/components/neumorphic/NeuCard';
@@ -7,6 +8,8 @@ import NeumorphicView from '@/components/neumorphic/NeumorphicView';
 import NeuButton from '@/components/neumorphic/NeuButton';
 import { neuColors, neuRadii } from '@/theme/neumorphic';
 import { formatStayMinutes } from './stayDuration';
+
+const UNDERLINE_HEIGHT = 3;
 
 interface LocationNote {
   id: string;
@@ -35,8 +38,15 @@ interface Props {
   lng?: number;
   attachmentUrls?: string;
   priority?: DestinationPriority;
-  /** ITIN-07: the color of the map leg leaving this stop (routeLegColor(i) - see routeColors.ts); undefined for the trip's last routed stop, or one with no coordinates, which get a plain underline instead. */
-  legColor?: string;
+  /**
+   * ITIN-07: this stop's underline - a gradient from the color of the stop
+   * BEFORE it into its own color (see stopGradientByDestinationId in
+   * routeColors.ts). fromColor is null for the trip's first stop (drawn
+   * solid instead, since nothing comes before it to gradient from).
+   * undefined entirely for a stop with no coordinates (it was never part
+   * of the routed sequence).
+   */
+  gradient?: { fromColor: string | null; toColor: string };
   /** ITIN-06: planned stay in whole minutes; shown as a small clock chip under the coordinates when set. */
   plannedDurationMinutes?: number | null;
   /**
@@ -73,7 +83,7 @@ export default function PinnedLocationCard({
   lng,
   attachmentUrls,
   priority = 'REQUIRED',
-  legColor,
+  gradient,
   plannedDurationMinutes,
   activityCompletedAt,
   onAddNote,
@@ -117,6 +127,17 @@ export default function PinnedLocationCard({
   // activityCompletedAt is set (via the Activity Dashboard's "Finish
   // activity" button, or the auto-detect prompt's "Finish at X"), even if
   // sessions already exist for this destination.
+  // ITIN-07: the underline (solid or gradient) is drawn as a separate
+  // element sized to match the name text exactly, rather than styling the
+  // Text's own border - a border can't carry a two-color gradient, and
+  // react-native-svg needs an explicit pixel width anyway. Starts at 0 and
+  // fills in once onLayout reports the rendered text width, so there's a
+  // one-frame gap with no visible underline on first paint.
+  const [nameWidth, setNameWidth] = useState(0);
+  const handleNameLayout = useCallback((event: LayoutChangeEvent) => {
+    setNameWidth(event.nativeEvent.layout.width);
+  }, []);
+
   const hasFinishedActivity = !!activityCompletedAt;
   const hasSessions = summary && summary.sessionCount > 0;
   const hasMetrics = hasFinishedActivity && hasSessions;
@@ -125,9 +146,27 @@ export default function PinnedLocationCard({
     <NeuCard size="md" style={styles.card}>
       <View style={styles.headerRow}>
         <View style={styles.nameFlex}>
-          <Text style={[styles.name, legColor ? { borderBottomColor: legColor } : styles.nameNoLeg]} numberOfLines={1}>
-            {name}
-          </Text>
+          <View style={styles.nameUnderlineWrap}>
+            <Text style={styles.name} numberOfLines={1} onLayout={handleNameLayout}>
+              {name}
+            </Text>
+            {gradient ? (
+              gradient.fromColor === null ? (
+                // First routed stop: solid in its own color, nothing to gradient from.
+                <View style={[styles.underline, { width: nameWidth, backgroundColor: gradient.toColor }]} />
+              ) : (
+                <Svg width={nameWidth} height={UNDERLINE_HEIGHT} style={styles.underline}>
+                  <Defs>
+                    <LinearGradient id="stopUnderline" x1="0" y1="0" x2="1" y2="0">
+                      <Stop offset="0" stopColor={gradient.fromColor} />
+                      <Stop offset="1" stopColor={gradient.toColor} />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect width={nameWidth} height={UNDERLINE_HEIGHT} fill="url(#stopUnderline)" />
+                </Svg>
+              )
+            ) : null}
+          </View>
           {lat !== undefined && lng !== undefined ? (
             <Text style={styles.coordinates}>{lat.toFixed(4)}° N, {lng.toFixed(4)}° E</Text>
           ) : null}
@@ -239,9 +278,9 @@ const styles = StyleSheet.create({
   card: { padding: 16, marginBottom: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   nameFlex: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary, alignSelf: 'flex-start', borderBottomWidth: 3, paddingBottom: 1 },
-  // ITIN-07: no outgoing leg on the map to color this with (the trip's last routed stop, or a stop with no coordinates at all).
-  nameNoLeg: { borderBottomColor: 'transparent' },
+  nameUnderlineWrap: { alignSelf: 'flex-start' },
+  name: { fontSize: 16, fontWeight: '700', color: neuColors.textPrimary, paddingBottom: 1 + UNDERLINE_HEIGHT },
+  underline: { position: 'absolute', left: 0, bottom: 1 },
   coordinates: { fontSize: 12, color: neuColors.textMuted, marginTop: 2 },
   stayChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: 8, paddingHorizontal: 10, paddingVertical: 4 },
   stayChipIcon: { fontSize: 12 },

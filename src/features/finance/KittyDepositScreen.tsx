@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
 import { apiClient } from '@/services/api/client';
+import { cacheKittyDepositsFromServer, getCachedLocalKittyDeposits } from '@/db/repositories/kittyDepositsRepository';
 import NeuCard from '@/components/neumorphic/NeuCard';
 import NeuTextInput from '@/components/neumorphic/NeuTextInput';
 import NeuButton from '@/components/neumorphic/NeuButton';
@@ -32,21 +34,37 @@ interface Props {
  * already existed on the backend, this screen was the missing piece.
  */
 export default function KittyDepositScreen({ tripId, tripMembers, currency }: Props) {
+  const database = useDatabase();
   const [deposits, setDeposits] = useState<KittyDeposit[]>([]);
   const [depositorUserId, setDepositorUserId] = useState(tripMembers[0]?.userId ?? '');
   const [amountDollars, setAmountDollars] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
+  /** Offline-first, same pattern as ItineraryContainer/ExpensesHubScreen. */
   const loadDeposits = useCallback(async () => {
     try {
       const result = await apiClient.get<KittyDeposit[]>(`/api/v1/finance/trips/${tripId}/kitty-deposits`);
       setDeposits(result);
+      setIsOffline(false);
+      cacheKittyDepositsFromServer(database, tripId, result).catch(err => console.warn('Failed to cache kitty deposits for offline use', err));
     } catch (err) {
-      console.warn('Failed to load kitty deposits', err);
-      setError('Unable to load kitty deposits right now.');
+      console.warn('Failed to load kitty deposits, falling back to local cache', err);
+      try {
+        const cached = await getCachedLocalKittyDeposits(database, tripId);
+        setDeposits(cached);
+        if (cached.length > 0) {
+          setIsOffline(true);
+        } else {
+          setError('Unable to load kitty deposits right now.');
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to read cached kitty deposits', cacheErr);
+        setError('Unable to load kitty deposits right now.');
+      }
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   useEffect(() => {
     loadDeposits();
@@ -140,6 +158,7 @@ export default function KittyDepositScreen({ tripId, tripMembers, currency }: Pr
             keyboardType="decimal-pad"
             placeholder="0.00"
           />
+          {isOffline ? <Text style={styles.offlineBanner}>You're offline - showing your last saved deposits.</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <NeuButton
             label={saving ? 'Saving…' : '+ Log a deposit'}
@@ -195,6 +214,7 @@ const styles = StyleSheet.create({
   memberChipText: { fontSize: 12, fontWeight: '700', color: neuColors.textMuted },
   memberChipTextActive: { color: neuColors.white },
   error: { color: neuColors.danger, fontSize: 12, marginTop: 8 },
+  offlineBanner: { color: neuColors.info, fontSize: 12, marginTop: 8, textAlign: 'center' },
   submitButton: { marginTop: 14 },
   recentHeader: {
     fontSize: 11,

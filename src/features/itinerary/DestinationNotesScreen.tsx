@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '@/services/api/client';
+import { cacheNotesFromServer, getCachedLocalNotes } from '@/db/repositories/locationNotesRepository';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import NeuCard from '@/components/neumorphic/NeuCard';
 import NeumorphicView from '@/components/neumorphic/NeumorphicView';
@@ -21,25 +23,41 @@ interface Props {
 }
 
 export default function DestinationNotesScreen({ destinationId, destinationName }: Props) {
+  const database = useDatabase();
   const [notes, setNotes] = useState<LocationNote[]>([]);
   const [newNote, setNewNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
+  /** Offline-first, same pattern as ItineraryContainer/ExpensesHubScreen. */
   const loadNotes = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const result = await apiClient.get<LocationNote[]>(`/api/v1/itinerary/destinations/${destinationId}/notes`);
       setNotes(result);
+      setIsOffline(false);
+      cacheNotesFromServer(database, destinationId, result).catch(err => console.warn('Failed to cache notes for offline use', err));
     } catch (err) {
-      console.warn('Failed to load destination notes', err);
-      setError('Unable to load notes right now.');
+      console.warn('Failed to load destination notes, falling back to local cache', err);
+      try {
+        const cached = await getCachedLocalNotes(database, destinationId);
+        setNotes(cached);
+        if (cached.length === 0) {
+          setError('Unable to load notes right now.');
+        } else {
+          setIsOffline(true);
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to read cached notes', cacheErr);
+        setError('Unable to load notes right now.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [destinationId]);
+  }, [destinationId, database]);
 
   useEffect(() => {
     loadNotes();
@@ -76,6 +94,7 @@ export default function DestinationNotesScreen({ destinationId, destinationName 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Notes for {destinationName}</Text>
         {loading ? <ActivityIndicator size="large" color={neuColors.accent} style={styles.spinner} /> : null}
+        {isOffline ? <Text style={styles.offlineBanner}>You're offline - showing your last saved notes.</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.inputSection}>
@@ -129,6 +148,7 @@ const styles = StyleSheet.create({
   header: { fontSize: 20, fontWeight: '700', marginBottom: 18, color: neuColors.textPrimary },
   spinner: { marginVertical: 24 },
   error: { color: neuColors.danger, marginBottom: 12 },
+  offlineBanner: { color: neuColors.info, fontSize: 12, marginBottom: 12, textAlign: 'center' },
   inputSection: { marginBottom: 20 },
   textAreaWrap: { minHeight: 110 },
   textArea: { flex: 1, padding: 12, fontSize: 13, color: neuColors.textPrimary, textAlignVertical: 'top' },

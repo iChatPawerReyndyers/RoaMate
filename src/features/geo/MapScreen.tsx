@@ -336,32 +336,55 @@ export default function MapScreen({
    * axes), so that case just flies to it directly at a reasonable zoom
    * instead of calling fitBounds with a zero-size box.
    */
+  /**
+   * GEO-05: frames every routed destination on screen. Shared by the
+   * auto-fit effect below (first time the pins load) and
+   * handleSelectLeg (re-run whenever a leg is picked from the Route
+   * colors panel, so the whole route is visible - not just whatever the
+   * map happened to be showing - and the highlighted leg is guaranteed
+   * on screen). A single destination has no "bounds" to fit (min === max
+   * on both axes), so that case flies to it directly at a reasonable
+   * zoom instead of calling fitBounds with a zero-size box.
+   */
+  const fitCameraToAllDestinations = useCallback(
+    (duration: number) => {
+      const withCoords = destinations.filter(
+        (d): d is Destination & { lat: number; lng: number } => d.lat !== undefined && d.lng !== undefined,
+      );
+      if (withCoords.length === 0) return;
+
+      if (withCoords.length === 1) {
+        const only = withCoords[0];
+        if (only) {
+          cameraRef.current?.flyTo({ center: [only.lng, only.lat], zoom: 14, duration });
+        }
+        return;
+      }
+
+      const lats = withCoords.map(d => d.lat);
+      const lngs = withCoords.map(d => d.lng);
+      const pad = 0.02;
+      cameraRef.current?.fitBounds(
+        [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad],
+        { padding: { top: 80, right: 80, bottom: 80, left: 80 }, duration },
+      );
+    },
+    [destinations],
+  );
+
   useEffect(() => {
     if (!mapReady) return;
     if (locations.length > 0) return;
+    if (destinations.length === 0) return;
 
-    const withCoords = destinations.filter(
-      (d): d is Destination & { lat: number; lng: number } => d.lat !== undefined && d.lng !== undefined,
-    );
-    if (withCoords.length === 0) return;
-
-    if (withCoords.length === 1) {
-      const only = withCoords[0];
-      if (only) {
-        cameraRef.current?.flyTo({ center: [only.lng, only.lat], zoom: 14, duration: 500 });
-        hasFramedCameraRef.current = true;
-      }
-      return;
-    }
-
-    const lats = withCoords.map(d => d.lat);
-    const lngs = withCoords.map(d => d.lng);
-    const pad = 0.02;
-    cameraRef.current?.fitBounds(
-      [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad],
-      { padding: { top: 80, right: 80, bottom: 80, left: 80 }, duration: 500 },
-    );
+    fitCameraToAllDestinations(500);
     hasFramedCameraRef.current = true;
+    // fitCameraToAllDestinations intentionally omitted: it's re-created whenever
+    // `destinations` changes, and re-running this effect for that reason alone
+    // would re-frame the camera on every edit, undoing wherever the person has
+    // since panned/zoomed to. `destinations` is listed directly instead, which
+    // is exactly what the effect already keyed off before this refactor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinations, locations.length, mapReady]);
 
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
@@ -625,6 +648,58 @@ export default function MapScreen({
     setMapTypeOpen(false);
   };
 
+  /**
+   * GEO-05: picking a leg from the Route colors panel re-frames the camera
+   * to the WHOLE route (fitCameraToAllDestinations), not just that leg -
+   * otherwise the highlighted leg could be off-screen if the map had been
+   * panned/zoomed elsewhere. Clearing the highlight (tapping the same row
+   * again) doesn't re-fit, since the person hasn't asked to see anything
+   * new in that case.
+   */
+  /**
+   * GEO-05: fits the camera to ONE leg's actual routed path (not just a
+   * straight line between its two stops - a real road can curve well
+   * outside that line), so "point A to point B" is what ends up on screen,
+   * not the whole trip. Right-padding accounts for the Route colors panel
+   * itself, which stays open (and covers the right side of the map) while
+   * a leg is highlighted.
+   */
+  const fitCameraToLeg = useCallback((segment: RouteSegment, duration: number) => {
+    const coords = segment.geometry.coordinates;
+    if (coords.length === 0) return;
+    // GeoJSON's Position type is `number[]` (it can carry an optional
+    // altitude), not a fixed [lng, lat] tuple, so indexing needs a fallback
+    // under this project's noUncheckedIndexedAccess setting.
+    const lngs = coords.map(c => c[0] ?? 0);
+    const lats = coords.map(c => c[1] ?? 0);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+
+    if (minLng === maxLng && minLat === maxLat) {
+      // Degenerate case (a "leg" with a single coordinate) - fly to it directly rather than fitBounds on a zero-size box.
+      cameraRef.current?.flyTo({ center: [minLng, minLat], zoom: 15, duration });
+      return;
+    }
+
+    const padLng = Math.max((maxLng - minLng) * 0.25, 0.003);
+    const padLat = Math.max((maxLat - minLat) * 0.25, 0.003);
+    cameraRef.current?.fitBounds([minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat], {
+      padding: { top: 100, right: 260, bottom: 80, left: 60 },
+      duration,
+    });
+  }, []);
+
+  const handleSelectLeg = (index: number | null) => {
+    setActiveLegIndex(index);
+    if (index === null) return;
+    const segment = routeSegments[index];
+    if (segment) {
+      fitCameraToLeg(segment, 600);
+    }
+  };
+
   const handleMapPress = (event: { nativeEvent: PressEvent }) => {
     // Tapping the map is the natural way to dismiss the map-type sheet and any highlighted route leg.
     setMapTypeOpen(false);
@@ -880,7 +955,7 @@ export default function MapScreen({
               segments={routeSegments}
               nameOf={id => destinations.find(d => d.id === id)?.name}
               activeIndex={activeLegIndex}
-              onSelect={setActiveLegIndex}
+              onSelect={handleSelectLeg}
               onClose={() => setLegendOpen(false)}
             />
           </View>

@@ -1,17 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Q } from '@nozbe/watermelondb';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import ChecklistScreen, { Item, NewItemOptions } from './ChecklistScreen';
-import type { Member } from './checklistViews';
+import { categoryValueOf, type Member } from './checklistViews';
 import { TemplateOption } from './TemplatePicker';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import { useSync } from '@/sync/SyncContext';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import { PACKING_TEMPLATES, GROCERY_TEMPLATE } from './templates';
+import { neuColors } from '@/theme/neumorphic';
+import {
+  cacheChecklistItemsFromServer,
+  getCachedLocalChecklistItems,
+} from '@/db/repositories/checklistRepository';
+import {
+  cacheMembersFromServer,
+  getCachedLocalMembers,
+} from '@/db/repositories/membersRepository';
 import ChecklistTemplateModel from '@/db/models/ChecklistTemplate';
 
 type Category = 'PACKING' | 'GROCERY';
@@ -28,12 +37,21 @@ export default function ChecklistContainer({ tripId }: Props) {
   // CHK-05: who can be put in charge of a shared item, and who "You" is.
   const [members, setMembers] = useState<Member[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
+  // Offline-first, same pattern as ItineraryContainer: true whenever the list on screen came from the local cache rather than a fresh fetch.
+  const [isOffline, setIsOffline] = useState(false);
   const syncManager = useSync();
   const database = useDatabase();
   // Rendered inside the Checklist tab (see TripTabs.tsx), so the nearest
   // stack ancestor is the 'Home' screen that hosts the tab navigator.
-  const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
 
+  /**
+   * CHK-07: network first (the source of truth - other members' changes
+   * only show up this way), falling back to the local cache for this
+   * category on any failure. Same offline-first pattern as
+   * ItineraryContainer.loadDestinations.
+   */
   const loadItems = useCallback(async () => {
     try {
       const userId = await getCurrentUserId();
@@ -41,21 +59,71 @@ export default function ChecklistContainer({ tripId }: Props) {
         `/api/v1/checklists/trips/${tripId}?category=${category}&requestingUserId=${encodeURIComponent(userId)}`,
       );
       setItems(result);
+      setIsOffline(false);
+      cacheChecklistItemsFromServer(database, tripId, category, result).catch(
+        err =>
+          console.warn('Failed to cache checklist items for offline use', err),
+      );
     } catch (err) {
-      console.warn('Failed to load checklist items', err);
+      console.warn(
+        'Failed to load checklist items, falling back to local cache',
+        err,
+      );
+      try {
+        const cached = await getCachedLocalChecklistItems(
+          database,
+          tripId,
+          category,
+        );
+        setItems(cached);
+        setIsOffline(cached.length > 0);
+      } catch (cacheErr) {
+        console.warn('Failed to read cached checklist items', cacheErr);
+      }
     }
-  }, [tripId, category]);
+  }, [tripId, category, database]);
 
   const loadMembers = useCallback(async () => {
+    setCurrentUserId(await getCurrentUserId());
     try {
-      setCurrentUserId(await getCurrentUserId());
-      const result = await apiClient.get<{ userId: string; displayName: string }[]>(`/api/v1/trips/${tripId}/members`);
-      setMembers(result.map(m => ({ userId: m.userId, displayName: m.displayName })));
+      const result = await apiClient.get<
+        { userId: string; displayName: string }[]
+      >(`/api/v1/trips/${tripId}/members`);
+      const mapped = result.map(m => ({
+        userId: m.userId,
+        displayName: m.displayName,
+      }));
+      setMembers(mapped);
+      cacheMembersFromServer(
+        database,
+        tripId,
+        mapped.map(m => ({
+          id: m.userId,
+          tripId,
+          userId: m.userId,
+          displayName: m.displayName,
+          role: 'MEMBER',
+        })),
+      ).catch(err =>
+        console.warn('Failed to cache trip members for offline use', err),
+      );
     } catch (err) {
-      // Without the list the sheet can only offer "Nobody yet" - items and everything else still work.
-      console.warn('Failed to load trip members', err);
+      // Without the list the sheet can only offer "Nobody yet" - items and everything else still work,
+      // so fall back to the cache quietly rather than surfacing an error for this one.
+      console.warn(
+        'Failed to load trip members, falling back to local cache',
+        err,
+      );
+      try {
+        const cached = await getCachedLocalMembers(database, tripId);
+        setMembers(
+          cached.map(m => ({ userId: m.userId, displayName: m.displayName })),
+        );
+      } catch (cacheErr) {
+        console.warn('Failed to read cached trip members', cacheErr);
+      }
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   const loadCustomTemplates = useCallback(async () => {
     try {
@@ -87,7 +155,9 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const builtInTemplateOptions: TemplateOption[] = useMemo(() => {
     if (category === 'GROCERY') {
-      return [{ key: 'grocery-default', label: 'Grocery', items: GROCERY_TEMPLATE }];
+      return [
+        { key: 'grocery-default', label: 'Grocery', items: GROCERY_TEMPLATE },
+      ];
     }
     return Object.entries(PACKING_TEMPLATES).map(([label, items]) => ({
       key: `packing-${label}`,
@@ -98,7 +168,11 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const templateOptions = [...builtInTemplateOptions, ...customTemplates];
 
-  const addSingleItem = async (label: string, visibility: 'PERSONAL' | 'SHARED' = 'SHARED', options: NewItemOptions = {}) => {
+  const addSingleItem = async (
+    label: string,
+    visibility: 'PERSONAL' | 'SHARED' | 'EVERYONE' = 'SHARED',
+    options: NewItemOptions = {},
+  ) => {
     const userId = await getCurrentUserId();
     try {
       const created = await apiClient.post<Item>('/api/v1/checklists/items', {
@@ -108,11 +182,17 @@ export default function ChecklistContainer({ tripId }: Props) {
         visibility,
         ownerUserId: userId,
         // CHK-05: only SHARED items can be put in someone's charge (the server rejects it for PERSONAL).
-        ...(visibility === 'SHARED' && options.assignedToUserId ? { assignedToUserId: options.assignedToUserId } : {}),
+        ...(visibility === 'SHARED' && options.assignedToUserId
+          ? { assignedToUserId: options.assignedToUserId }
+          : {}),
         ...(category === 'GROCERY' ? { quantity: 1, priority: 'MEDIUM' } : {}),
         // The add bar's category is a PackingItemCategory name on the Packing tab and a store section on Grocery.
-        ...(category === 'PACKING' && options.category ? { packingItemCategory: options.category } : {}),
-        ...(category === 'GROCERY' && options.category ? { storeCategory: options.category } : {}),
+        ...(category === 'PACKING' && options.category
+          ? { packingItemCategory: options.category }
+          : {}),
+        ...(category === 'GROCERY' && options.category
+          ? { storeCategory: options.category }
+          : {}),
       });
       setItems(prev => [...prev, created]);
     } catch (err) {
@@ -122,7 +202,7 @@ export default function ChecklistContainer({ tripId }: Props) {
 
   const handlePickTemplate = async (option: TemplateOption) => {
     for (const label of option.items) {
-      // eslint-disable-next-line no-await-in-loop -- server assigns IDs; sequential keeps ordering predictable
+       
       await addSingleItem(label);
     }
   };
@@ -132,12 +212,14 @@ export default function ChecklistContainer({ tripId }: Props) {
     const name = `${category === 'GROCERY' ? 'Grocery' : 'Packing'} - saved ${new Date().toLocaleDateString()}`;
 
     await database.write(async () => {
-      await database.get<ChecklistTemplateModel>('checklist_templates').create(record => {
-        record.name = name;
-        record.category = category;
-        record.itemsJson = JSON.stringify(items.map(i => i.label));
-        record.createdAt = Date.now();
-      });
+      await database
+        .get<ChecklistTemplateModel>('checklist_templates')
+        .create(record => {
+          record.name = name;
+          record.category = category;
+          record.itemsJson = JSON.stringify(items.map(i => i.label));
+          record.createdAt = Date.now();
+        });
     });
 
     await loadCustomTemplates();
@@ -149,11 +231,16 @@ export default function ChecklistContainer({ tripId }: Props) {
       tripId,
       eventType: 'CHECKLIST_ITEM_TOGGLED',
       clientTimestamp: now,
-      payloadJson: JSON.stringify({ itemId, toggledAt: new Date(now).toISOString() }),
+      payloadJson: JSON.stringify({
+        itemId,
+        toggledAt: new Date(now).toISOString(),
+      }),
     });
 
     try {
-      const updated = await apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/toggle`);
+      const updated = await apiClient.post<Item>(
+        `/api/v1/checklists/items/${itemId}/toggle`,
+      );
       setItems(prev => prev.map(item => (item.id === itemId ? updated : item)));
     } catch (err) {
       console.warn('Failed to toggle checklist item, queued for sync', err);
@@ -166,24 +253,46 @@ export default function ChecklistContainer({ tripId }: Props) {
    * THAT item is put back the way it was and the person is told - so a
    * failure can't clobber other edits made in the meantime.
    */
-  const updateItemOptimistically = async (itemId: string, change: Partial<Item>, save: () => Promise<Item>) => {
+  const updateItemOptimistically = async (
+    itemId: string,
+    change: Partial<Item>,
+    save: () => Promise<Item>,
+  ) => {
     const original = items.find(i => i.id === itemId);
     if (!original) return;
-    setItems(prev => prev.map(i => (i.id === itemId ? { ...i, ...change } : i)));
+    setItems(prev =>
+      prev.map(i => (i.id === itemId ? { ...i, ...change } : i)),
+    );
     try {
       const saved = await save();
       setItems(prev => prev.map(i => (i.id === itemId ? saved : i)));
     } catch (err) {
       console.warn('Failed to update checklist item', err);
       setItems(prev => prev.map(i => (i.id === itemId ? original : i)));
-      Alert.alert("Couldn't save that change", 'Check your connection and try again.');
+      Alert.alert(
+        "Couldn't save that change",
+        'Check your connection and try again.',
+      );
     }
   };
 
   const handleAssign = (itemId: string, userId: string | null) =>
     updateItemOptimistically(itemId, { assignedToUserId: userId }, () =>
-      apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/assignee`, { assignedToUserId: userId }),
+      apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/assignee`, {
+        assignedToUserId: userId,
+      }),
     );
+
+  /**
+   * CHK-06: "we need two tents" - creates a second SHARED item with the same
+   * name and category as `source`, unassigned, so it can be given to a
+   * second person. Plain create, not an "update" - the two rows are fully
+   * independent afterwards (removing one never touches the other).
+   */
+  const handleDuplicateItem = (source: Item) =>
+    addSingleItem(source.label, 'SHARED', {
+      category: categoryValueOf(source, category),
+    });
 
   const handleChangeItemCategory = (itemId: string, value: string | null) =>
     updateItemOptimistically(
@@ -191,7 +300,10 @@ export default function ChecklistContainer({ tripId }: Props) {
       category === 'PACKING'
         ? { packingItemCategory: value as Item['packingItemCategory'] }
         : { storeCategory: value },
-      () => apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/category`, { category: value }),
+      () =>
+        apiClient.post<Item>(`/api/v1/checklists/items/${itemId}/category`, {
+          category: value,
+        }),
     );
 
   const handleConvertToExpense = (id: string) => {
@@ -204,20 +316,40 @@ export default function ChecklistContainer({ tripId }: Props) {
   };
 
   return (
-    <ChecklistScreen
-      category={category}
-      onChangeCategory={setCategory}
-      items={items}
-      members={members}
-      currentUserId={currentUserId}
-      onToggle={handleToggle}
-      onConvertToExpense={handleConvertToExpense}
-      onAddItem={addSingleItem}
-      onAssign={handleAssign}
-      onChangeItemCategory={handleChangeItemCategory}
-      templateOptions={templateOptions}
-      onPickTemplate={handlePickTemplate}
-      onSaveCurrentAsTemplate={handleSaveCurrentAsTemplate}
-    />
+    <>
+      {isOffline ? (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            You're offline - showing your last saved checklist.
+          </Text>
+        </View>
+      ) : null}
+      <ChecklistScreen
+        category={category}
+        onChangeCategory={setCategory}
+        items={items}
+        members={members}
+        currentUserId={currentUserId}
+        onToggle={handleToggle}
+        onConvertToExpense={handleConvertToExpense}
+        onAddItem={addSingleItem}
+        onAssign={handleAssign}
+        onDuplicateItem={handleDuplicateItem}
+        onChangeItemCategory={handleChangeItemCategory}
+        templateOptions={templateOptions}
+        onPickTemplate={handlePickTemplate}
+        onSaveCurrentAsTemplate={handleSaveCurrentAsTemplate}
+      />
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  offlineBanner: {
+    backgroundColor: neuColors.info,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineBannerText: { color: neuColors.white, fontSize: 12 },
+});

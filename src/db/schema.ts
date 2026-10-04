@@ -7,7 +7,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
  * than requiring translation logic.
  */
 export default appSchema({
-  version: 3,
+  version: 4,
   tables: [
     tableSchema({
       name: 'trips',
@@ -133,6 +133,14 @@ export default appSchema({
         { name: 'checked', type: 'boolean' },
         { name: 'assigned_to_user_id', type: 'string', isOptional: true },
         { name: 'converted_expense_id', type: 'string', isOptional: true },
+        // v4: cached alongside the fields above so the checklist can be read
+        // with no connection - see db/repositories/checklistRepository.ts.
+        { name: 'visibility', type: 'string', isOptional: true },
+        { name: 'owner_user_id', type: 'string', isOptional: true },
+        { name: 'packing_item_category', type: 'string', isOptional: true },
+        { name: 'store_category', type: 'string', isOptional: true },
+        { name: 'quantity', type: 'number', isOptional: true },
+        { name: 'priority', type: 'string', isOptional: true },
         { name: 'synced', type: 'boolean' },
       ],
     }),

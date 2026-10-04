@@ -14,7 +14,8 @@ export interface ViewItem {
   label: string;
   checked: boolean;
   /** Absent is treated as SHARED. PERSONAL items are only ever returned to their owner, so they're always "mine". */
-  visibility?: 'PERSONAL' | 'SHARED';
+  /** CHK-01/06: PERSONAL = only me. SHARED = everyone sees it, one person is in charge. EVERYONE = everyone sees it, each person brings their own (no single assignee). Absent is treated as SHARED. */
+  visibility?: 'PERSONAL' | 'SHARED' | 'EVERYONE';
   assignedToUserId?: string | null;
   packingItemCategory?: 'CLOTHING' | 'ELECTRONICS' | 'TOILETRIES' | 'GEAR' | null;
   storeCategory?: string | null;
@@ -72,6 +73,11 @@ export function isViewKey(value: unknown): value is ChecklistViewKey {
 
 export function isPersonal(item: ViewItem): boolean {
   return item.visibility === 'PERSONAL';
+}
+
+/** CHK-06: an "everyone brings their own" item - visible to the whole group, but with no single person in charge of it. */
+export function isEveryone(item: ViewItem): boolean {
+  return item.visibility === 'EVERYONE';
 }
 
 /** The stored category value for an item: a PackingItemCategory name, a trimmed store section, or null. */
@@ -166,7 +172,9 @@ export function groupByCategory<T extends ViewItem>(items: T[], kind: ChecklistK
 export function matchesFilter(item: ViewItem, filter: TodoFilter, currentUserId: string): boolean {
   switch (filter) {
     case 'MINE':
-      return isPersonal(item) || item.assignedToUserId === currentUserId;
+      // CHK-06: an EVERYONE item is required of everyone, so it's "mine" no
+      // matter who added it or whether I've marked it done before.
+      return isPersonal(item) || item.assignedToUserId === currentUserId || isEveryone(item);
     case 'SHARED':
       return !isPersonal(item);
     case 'PERSONAL':
@@ -195,21 +203,30 @@ export function memberName(userId: string | null | undefined, members: Member[],
 
 export const NOBODY_KEY = '__nobody__';
 export const UNKNOWN_KEY = '__unknown__';
+export const EVERYONE_KEY = '__everyone__';
 
 /**
- * View 3: "who's bringing what". Me first (my personal items always count
- * as mine, plus anything shared I'm in charge of), then the other members in
- * trip order, then assignees who've left the trip, then "Nobody yet".
+ * View 3: "who's bringing what". CHK-06 EVERYONE items get their own
+ * section - they don't belong to any one person, so folding them into "You"
+ * or scattering a copy into every member's section would either hide who
+ * they're really for or require tracking N separate copies of one item;
+ * a dedicated section says "this is everyone's" once. Order: me first (my
+ * personal items plus anything shared I'm in charge of), then Everyone,
+ * then the other members in trip order, then assignees who've left the
+ * trip, then "Nobody yet".
  */
 export function groupByPerson<T extends ViewItem>(items: T[], members: Member[], currentUserId: string): Section<T>[] {
   const mine: T[] = [];
+  const everyone: T[] = [];
   const byMember = new Map<string, T[]>();
   const unknown: T[] = [];
   const nobody: T[] = [];
   const memberIds = new Set(members.map(m => m.userId));
 
   items.forEach(item => {
-    if (isPersonal(item) || item.assignedToUserId === currentUserId) {
+    if (isEveryone(item)) {
+      everyone.push(item);
+    } else if (isPersonal(item) || item.assignedToUserId === currentUserId) {
       mine.push(item);
     } else if (!item.assignedToUserId) {
       nobody.push(item);
@@ -228,6 +245,9 @@ export function groupByPerson<T extends ViewItem>(items: T[], members: Member[],
   const sections: Section<T>[] = [];
   if (mine.length) {
     sections.push(makeSection(currentUserId, 'You', mine, currentUserId));
+  }
+  if (everyone.length) {
+    sections.push(makeSection(EVERYONE_KEY, 'Everyone', everyone, null));
   }
   members
     .filter(m => m.userId !== currentUserId)

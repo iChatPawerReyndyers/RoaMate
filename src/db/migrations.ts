@@ -15,6 +15,13 @@ import { schemaMigrations, createTable, addColumns } from '@nozbe/watermelondb/S
  * be cached locally - see db/repositories/destinationsRepository.ts, which
  * writes these on every successful fetch and reads them back when a fetch
  * fails.
+ *
+ * v3 -> v4: same offline-first fix, extended to the checklist. Adds the
+ * fields checklist items have grown since v1 (visibility, owner_user_id,
+ * packing_item_category, store_category, quantity, priority) so a full
+ * item - Shared/Everyone/Personal, its category, who's in charge - can be
+ * cached and read back with no connection. See
+ * db/repositories/checklistRepository.ts.
  */
 export default schemaMigrations({
   migrations: [
@@ -50,6 +57,22 @@ export default schemaMigrations({
             { name: 'priority', type: 'string', isOptional: true },
             { name: 'planned_duration_minutes', type: 'number', isOptional: true },
             { name: 'activity_completed_at', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 4,
+      steps: [
+        addColumns({
+          table: 'checklist_items',
+          columns: [
+            { name: 'visibility', type: 'string', isOptional: true },
+            { name: 'owner_user_id', type: 'string', isOptional: true },
+            { name: 'packing_item_category', type: 'string', isOptional: true },
+            { name: 'store_category', type: 'string', isOptional: true },
+            { name: 'quantity', type: 'number', isOptional: true },
+            { name: 'priority', type: 'string', isOptional: true },
           ],
         }),
       ],

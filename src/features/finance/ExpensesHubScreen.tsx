@@ -11,11 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Cents } from '@/money/Cents';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { apiClient } from '@/services/api/client';
 import { getCurrentUserId } from '@/services/security/KeyManager';
 import { useTrip } from '@/app/TripContext';
 import { useSync } from '@/sync/SyncContext';
-import { ExpenseDto } from '@/db/repositories/expensesRepository';
+import { ExpenseDto, cacheExpensesFromServer, getCachedLocalExpenseList } from '@/db/repositories/expensesRepository';
 import ExpenseEntryScreen from './ExpenseEntryScreen';
 import KittyDepositScreen from './KittyDepositScreen';
 import ConflictReviewDashboard from './ConflictReviewDashboard';
@@ -53,9 +54,12 @@ const ADD_TABS: { key: AddTab; label: string }[] = [
  * of being folded into each row.
  */
 export default function ExpensesHubScreen({ tripId }: Props) {
+  const database = useDatabase();
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Offline-first, same pattern as ItineraryContainer: true whenever what's on screen came from the local cache rather than a fresh fetch.
+  const [isOffline, setIsOffline] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addTab, setAddTab] = useState<AddTab>('expense');
   const [duplicatesModalVisible, setDuplicatesModalVisible] = useState(false);
@@ -63,19 +67,38 @@ export default function ExpensesHubScreen({ tripId }: Props) {
   const { currentTrip } = useTrip();
   const syncManager = useSync();
 
+  /**
+   * FIN-05: network first (the source of truth), falling back to the local
+   * cache on any failure - same offline-first pattern as
+   * ItineraryContainer.loadDestinations. The error screen is reserved for
+   * "no connection AND nothing has ever been cached".
+   */
   const loadExpenses = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const result = await apiClient.get<ExpenseDto[]>(`/api/v1/finance/trips/${tripId}/expenses`);
       setExpenses(result);
+      setIsOffline(false);
+      cacheExpensesFromServer(database, tripId, result).catch(err => console.warn('Failed to cache expenses for offline use', err));
     } catch (err) {
-      console.warn('Failed to load expenses', err);
-      setError('Unable to load expenses right now.');
+      console.warn('Failed to load expenses, falling back to local cache', err);
+      try {
+        const cached = await getCachedLocalExpenseList(database, tripId);
+        if (cached.length > 0) {
+          setExpenses(cached);
+          setIsOffline(true);
+        } else {
+          setError('Unable to load expenses right now.');
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to read cached expenses', cacheErr);
+        setError('Unable to load expenses right now.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, database]);
 
   // Mirrors ItineraryContainer's pattern: this tab never unmounts once the
   // trip is open, so a mount-only effect would miss expenses added via the
@@ -143,6 +166,7 @@ export default function ExpensesHubScreen({ tripId }: Props) {
         </View>
 
         {loading ? <ActivityIndicator style={styles.spinner} /> : null}
+        {isOffline ? <Text style={styles.offlineBanner}>You're offline - showing your last saved expenses.</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {!loading && expenses.length === 0 && !error ? (
@@ -255,6 +279,7 @@ const styles = StyleSheet.create({
   reviewDuplicatesLink: { fontSize: 12, fontWeight: '700', color: neuColors.accent },
   spinner: { marginVertical: 16 },
   error: { color: neuColors.danger, marginBottom: 12 },
+  offlineBanner: { color: neuColors.info, fontSize: 12, marginBottom: 12, textAlign: 'center' },
   expenseCard: { padding: 14, marginBottom: 12 },
   duplicateEdge: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, backgroundColor: neuColors.danger },
   expenseRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

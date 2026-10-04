@@ -24,6 +24,15 @@ interface Props {
   categoryOptions?: CategoryOption[];
   category?: string | null;
   onChangeCategory?: (value: string | null) => void;
+  /**
+   * CHK-06: "we need two tents" - a second linked item with the same name
+   * and category but its own checkbox and its own person, rather than one
+   * item with a shared "quantity" (which would need one item to have
+   * multiple checked states - a bigger change). Shown only alongside the
+   * member list, since Personal/Everyone items have no single assignee to
+   * duplicate this way.
+   */
+  onDuplicateForAnother?: () => void;
   onClose: () => void;
 }
 
@@ -54,6 +63,7 @@ export default function ChecklistItemSheet({
   categoryOptions,
   category,
   onChangeCategory,
+  onDuplicateForAnother,
   onClose,
 }: Props) {
   // You first, then everyone else in trip order.
@@ -104,6 +114,17 @@ export default function ChecklistItemSheet({
                   {assignedToUserId === null ? <Text style={styles.check}>✓</Text> : null}
                 </TouchableOpacity>
               </ScrollView>
+            ) : null}
+
+            {showMembers && onDuplicateForAnother ? (
+              <TouchableOpacity
+                style={styles.duplicateButton}
+                onPress={onDuplicateForAnother}
+                accessibilityRole="button"
+                accessibilityLabel="Need another person for this too?"
+              >
+                <Text style={styles.duplicateButtonText}>+ Need another person for this too?</Text>
+              </TouchableOpacity>
             ) : null}
 
             {showCategory ? (
@@ -164,5 +185,15 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { fontSize: 12, color: neuColors.textPrimary },
   chipTextSelected: { color: neuColors.white, fontWeight: '600' },
+  duplicateButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: neuRadii.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: neuColors.accent,
+    alignItems: 'center',
+  },
+  duplicateButtonText: { fontSize: 13, fontWeight: '600', color: neuColors.accent },
   doneButton: { marginTop: 14 },
 });

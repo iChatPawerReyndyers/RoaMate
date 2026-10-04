@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -10,13 +11,16 @@ import TripTabs from '@/app/navigation/TripTabs';
 import { TripStackParamList } from '@/app/navigation/TripStack';
 import AccountBadge from '@/features/account/AccountBadge';
 import TripInfoModal from './TripInfoModal';
+import { cacheMembersFromServer, getCachedLocalMembers } from '@/db/repositories/membersRepository';
 import { neuColors, neuSpacing } from '@/theme/neumorphic';
 
 export default function TripHomeScreen() {
   const { currentTrip, setTripMembers } = useTrip();
   const { account } = useAccount();
+  const database = useDatabase();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const navigation = useNavigation<NativeStackNavigationProp<TripStackParamList, 'Home'>>();
 
@@ -25,12 +29,28 @@ export default function TripHomeScreen() {
       if (!currentTrip) return;
       setLoading(true);
       setError(null);
+      // Offline-first, same pattern as ItineraryContainer: network first, then the local cache on any failure.
       try {
         const members = await apiClient.get<TripMember[]>(`/api/v1/trips/${currentTrip.tripId}/members`);
         setTripMembers(members);
+        setIsOffline(false);
+        cacheMembersFromServer(database, currentTrip.tripId, members).catch(err =>
+          console.warn('Failed to cache trip members for offline use', err),
+        );
       } catch (err: any) {
-        console.warn('Failed to load trip members', err);
-        setError('Unable to load trip members right now.');
+        console.warn('Failed to load trip members, falling back to local cache', err);
+        try {
+          const cached = await getCachedLocalMembers(database, currentTrip.tripId);
+          if (cached.length > 0) {
+            setTripMembers(cached);
+            setIsOffline(true);
+          } else {
+            setError('Unable to load trip members right now.');
+          }
+        } catch (cacheErr) {
+          console.warn('Failed to read cached trip members', cacheErr);
+          setError('Unable to load trip members right now.');
+        }
       } finally {
         setLoading(false);
       }
@@ -42,7 +62,10 @@ export default function TripHomeScreen() {
     // (new members array) every time it runs. Depending on currentTrip
     // itself would re-trigger this same effect on every successful fetch,
     // looping forever - "Loading members..." would never settle.
-  }, [currentTrip?.tripId, setTripMembers]);
+    // `database` from useDatabase() is a stable reference across renders (unlike
+    // currentTrip, see the comment above about why tripId alone is used there),
+    // so including it here doesn't reintroduce the re-trigger loop.
+  }, [currentTrip?.tripId, setTripMembers, database]);
 
   if (!currentTrip) {
     return null;
@@ -62,6 +85,7 @@ export default function TripHomeScreen() {
           {currentTrip.members.length === 1 ? '' : 's'}
         </Text>
         {loading ? <Text style={styles.loading}>Loading members…</Text> : null}
+        {isOffline ? <Text style={styles.offlineBanner}>You're offline - showing your last saved members.</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
       <View style={styles.tabsWrapper}>
@@ -87,5 +111,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, color: neuColors.textMuted, marginTop: 2 },
   loading: { color: neuColors.textMuted, fontSize: 12, marginTop: 4 },
   error: { color: neuColors.danger, fontSize: 12, marginTop: 4 },
+  offlineBanner: { color: neuColors.info, fontSize: 12, marginTop: 4 },
   tabsWrapper: { flex: 1 },
 });
