@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import { ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cents } from '@/money/Cents';
@@ -105,6 +106,45 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
     tripMembers.map(m => ({ userId: m.userId, label: m.displayName, included: true, amountDollars: '' })),
   );
 
+  /**
+   * FIN-01 bugfix: when a trip is first opened, TripContext seeds
+   * `currentTrip.members` as an empty array and only fills it in once a
+   * separate async fetch resolves (see TripContext.setCurrentTrip /
+   * TripHomeScreen). payerRows/splitRows above are only built once, at
+   * mount, from whatever `tripMembers` was at that instant - so opening
+   * this screen before that fetch finished left both lists permanently
+   * empty (besides the Kitty row), making the expense impossible to ever
+   * balance and Save silently do nothing forever. This adds any trip
+   * member not yet represented as a row, whenever the prop changes,
+   * without touching rows that already exist (so nothing a person already
+   * typed gets reset) - covering both "opened too early" and a member
+   * joining the trip mid-session.
+   */
+  useEffect(() => {
+    setPayerRows(prev => {
+      const existingKeys = new Set(prev.map(r => r.key));
+      const missing = tripMembers.filter(m => !existingKeys.has(m.userId));
+      if (missing.length === 0) return prev;
+      return [
+        ...prev,
+        ...missing.map(m => ({
+          key: m.userId,
+          source: 'MEMBER_ABONO' as const,
+          payerUserId: m.userId,
+          label: m.displayName,
+          included: initialPaymentSource?.source === 'MEMBER_ABONO' && initialPaymentSource.payerUserId === m.userId,
+          amountDollars: '',
+        })),
+      ];
+    });
+    setSplitRows(prev => {
+      const existingKeys = new Set(prev.map(r => r.userId));
+      const missing = tripMembers.filter(m => !existingKeys.has(m.userId));
+      if (missing.length === 0) return prev;
+      return [...prev, ...missing.map(m => ({ userId: m.userId, label: m.displayName, included: true, amountDollars: '' }))];
+    });
+  }, [tripMembers, initialPaymentSource]);
+
   const totalCents = useMemo(() => {
     const parsed = parseFloat(totalDollars || '0');
     return Number.isFinite(parsed) ? Cents.fromDollars(parsed) : Cents.of(0);
@@ -197,10 +237,26 @@ export default function ExpenseEntryScreen({ tripMembers, initialDescription, in
       .map(r => ({ userId: r.userId, amountCents: resolvedById.get(r.userId) as Cents }));
   }, [splitBalance, splitRows]);
 
+  /**
+   * Defense in depth alongside the row-sync fix above: whatever the
+   * reason Save can't go through, the person gets an explicit Alert
+   * rather than the screen just sitting there - "nothing happens on the
+   * screen at all" should no longer be possible from here even if some
+   * other edge case blocks submission in the future.
+   */
   const handleSubmit = () => {
-    if (!description.trim()) return;
-    if (!payments) return; // banner already explains why - nothing further to surface here
-    if (!participantShares) return; // same for the split-between banner
+    if (!description.trim()) {
+      Alert.alert('Add a description', "What was this expense for?");
+      return;
+    }
+    if (!payments) {
+      Alert.alert('Who paid?', payerBalance.message);
+      return;
+    }
+    if (!participantShares) {
+      Alert.alert('Split between', splitBalance.message);
+      return;
+    }
 
     onSubmit({
       description,

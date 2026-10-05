@@ -42,6 +42,22 @@ export default function KittyDepositScreen({ tripId, tripMembers, currency }: Pr
   const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
+  /**
+   * FIN-06 bugfix: when a trip is first opened, TripContext seeds
+   * `currentTrip.members` as an empty array and only fills it in once a
+   * separate async fetch resolves (see TripContext.setCurrentTrip /
+   * TripHomeScreen). depositorUserId above is only set once, at mount, so
+   * opening this screen before that fetch finished left it stuck on ''
+   * forever - no chip ever showed as selected, and "Log a deposit" always
+   * failed its "choose a member" check. Only auto-selects when nothing is
+   * currently chosen, so it never overrides a person's own pick.
+   */
+  useEffect(() => {
+    if (!depositorUserId && tripMembers.length > 0) {
+      setDepositorUserId(tripMembers[0]?.userId ?? '');
+    }
+  }, [tripMembers, depositorUserId]);
+
   /** Offline-first, same pattern as ItineraryContainer/ExpensesHubScreen. */
   const loadDeposits = useCallback(async () => {
     try {

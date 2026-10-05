@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { apiClient } from '@/services/api/client';
 import type { DestinationPriority } from './ItineraryScreen';
@@ -127,17 +127,6 @@ export default function PinnedLocationCard({
   // activityCompletedAt is set (via the Activity Dashboard's "Finish
   // activity" button, or the auto-detect prompt's "Finish at X"), even if
   // sessions already exist for this destination.
-  // ITIN-07: the underline (solid or gradient) is drawn as a separate
-  // element sized to match the name text exactly, rather than styling the
-  // Text's own border - a border can't carry a two-color gradient, and
-  // react-native-svg needs an explicit pixel width anyway. Starts at 0 and
-  // fills in once onLayout reports the rendered text width, so there's a
-  // one-frame gap with no visible underline on first paint.
-  const [nameWidth, setNameWidth] = useState(0);
-  const handleNameLayout = useCallback((event: LayoutChangeEvent) => {
-    setNameWidth(event.nativeEvent.layout.width);
-  }, []);
-
   const hasFinishedActivity = !!activityCompletedAt;
   const hasSessions = summary && summary.sessionCount > 0;
   const hasMetrics = hasFinishedActivity && hasSessions;
@@ -146,23 +135,38 @@ export default function PinnedLocationCard({
     <NeuCard size="md" style={styles.card}>
       <View style={styles.headerRow}>
         <View style={styles.nameFlex}>
+          {/*
+            ITIN-07: the underline (solid or gradient) is drawn as a
+            separate element sized to match the name text, rather than
+            styling the Text's own border - a border can't carry a
+            two-color gradient. Sized with width="100%" against
+            nameUnderlineWrap (which shrink-wraps to the Text's own
+            rendered width, via alignSelf: 'flex-start') rather than a
+            manually measured pixel width: an earlier version waited for
+            onLayout to report the Text's width before drawing anything,
+            which left a stop's underline invisible for a frame on every
+            render, and could leave it invisible indefinitely on devices
+            or layouts where that measurement is ever delayed or skipped
+            altogether - percentage sizing has no such gap, since it needs
+            no measurement step at all.
+          */}
           <View style={styles.nameUnderlineWrap}>
-            <Text style={styles.name} numberOfLines={1} onLayout={handleNameLayout}>
+            <Text style={styles.name} numberOfLines={1}>
               {name}
             </Text>
             {gradient ? (
               gradient.fromColor === null ? (
                 // First routed stop: solid in its own color, nothing to gradient from.
-                <View style={[styles.underline, { width: nameWidth, backgroundColor: gradient.toColor }]} />
+                <View style={[styles.underline, { width: '100%', backgroundColor: gradient.toColor }]} />
               ) : (
-                <Svg width={nameWidth} height={UNDERLINE_HEIGHT} style={styles.underline}>
+                <Svg width="100%" height={UNDERLINE_HEIGHT} style={styles.underline}>
                   <Defs>
                     <LinearGradient id="stopUnderline" x1="0" y1="0" x2="1" y2="0">
                       <Stop offset="0" stopColor={gradient.fromColor} />
                       <Stop offset="1" stopColor={gradient.toColor} />
                     </LinearGradient>
                   </Defs>
-                  <Rect width={nameWidth} height={UNDERLINE_HEIGHT} fill="url(#stopUnderline)" />
+                  <Rect width="100%" height={UNDERLINE_HEIGHT} fill="url(#stopUnderline)" />
                 </Svg>
               )
             ) : null}
